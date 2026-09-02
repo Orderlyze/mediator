@@ -616,17 +616,39 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         }
 
         // Process request body
-        if (operation.RequestBody?.Content?.TryGetValue("application/json", out var mediaType) ?? false)
+        if (operation.RequestBody?.Content is { Count: > 0 } bodyContent)
         {
-            var bodyType = ResolveSchemaTypeOrSynthesize(mediaType.Schema!, config, modelGenerator, $"{opId}Body");
-            properties.Add(new HttpPropertyInfo(
-                "Body",
-                "Body",
-                operation.RequestBody.Required,
-                HttpParameterType.Body,
-                bodyType,
-                operation.RequestBody.Description
-            ));
+            if (bodyContent.TryGetValue("application/json", out var mediaType) && mediaType?.Schema != null && !IsBinarySchema(mediaType.Schema))
+            {
+                var bodyType = ResolveSchemaTypeOrSynthesize(mediaType.Schema, config, modelGenerator, $"{opId}Body");
+                properties.Add(new HttpPropertyInfo(
+                    "Body",
+                    "Body",
+                    operation.RequestBody.Required,
+                    HttpParameterType.Body,
+                    bodyType,
+                    operation.RequestBody.Description
+                ));
+            }
+            else
+            {
+                // Raw body (format: binary, e.g. an image upload or an opaque JSON document): the
+                // contract carries a Stream and the handler sends it verbatim with the first declared
+                // media type of the request body.
+                var raw = bodyContent.FirstOrDefault(kv => kv.Value?.Schema != null && IsBinarySchema(kv.Value.Schema));
+                if (raw.Value != null)
+                {
+                    properties.Add(new HttpPropertyInfo(
+                        "Body",
+                        "Body",
+                        operation.RequestBody.Required,
+                        HttpParameterType.Body,
+                        StreamType,
+                        operation.RequestBody.Description,
+                        raw.Key
+                    ));
+                }
+            }
         }
 
         // Generate contract class
@@ -765,6 +787,11 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
     static readonly string[] SuccessResponses = ["200", "201", "202", "203"];
     const string JsonMediaType = "application/json";
     const string FallbackType = "global::System.Net.Http.HttpResponseMessage";
+    const string StreamType = "global::System.IO.Stream";
+
+    /// <summary>A schema describing raw bytes (string/binary) rather than a JSON shape — also through a $ref.</summary>
+    static bool IsBinarySchema(IOpenApiSchema schema)
+        => schema.Format is "binary" or "byte" && (schema.Type == null || schema.Type.Value.HasFlag(JsonSchemaType.String));
     
     static string GetResponseType(
         OpenApiOperation operation,
@@ -791,6 +818,10 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
                     // Try application/json first
                     if (response.Content.TryGetValue(JsonMediaType, out var mediaType) && mediaType?.Schema != null)
                     {
+                        // Raw payloads (format: binary) have no JSON shape — the caller reads the response itself.
+                        if (IsBinarySchema(mediaType.Schema))
+                            break;
+
                         responseType = ResolveSchemaTypeOrSynthesize(mediaType.Schema, config, modelGenerator, $"{opId}Response");
                         break;
                     }
@@ -961,6 +992,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         "uuid" => "global::System.Guid",
         "date" => "global::System.DateOnly",
         "time" => "global::System.TimeOnly",
+        "binary" or "byte" => "byte[]",
         _ => "string"
     };
     

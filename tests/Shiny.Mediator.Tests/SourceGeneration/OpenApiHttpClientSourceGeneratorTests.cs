@@ -78,6 +78,8 @@ public class OpenApiHttpClientSourceGeneratorTests(ITestOutputHelper output)
     [InlineData("./SourceGeneration/test.json")]
     // Numeric enums with x-enumNames / x-enumFlags and decimal formats (NSwag conventions).
     [InlineData("./SourceGeneration/enums.json")]
+    // Raw bodies and raw responses (format: binary) — Stream contracts, HttpResponseMessage results.
+    [InlineData("./SourceGeneration/binary.json")]
     public Task TestApis_Generation(string filePath)
     {
         var content = File.ReadAllText(filePath);

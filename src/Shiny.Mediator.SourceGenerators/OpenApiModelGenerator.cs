@@ -411,6 +411,7 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
             "date" => "global::System.DateOnly",
             "time" => "global::System.TimeOnly",
             "date-span" => "global::System.TimeSpan",
+            "binary" or "byte" => "byte[]",
             _ => "string"
         };
     }
