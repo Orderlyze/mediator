@@ -869,7 +869,8 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         {
             schemaType = schema.Format == "int64" ? "long" : 
                          schema.Format == "float" ? "float" : 
-                         schema.Format == "double" ? "double" : "int";
+                         schema.Format == "double" ? "double" :
+                         schema.Format == "decimal" ? "decimal" : "int";
         }
         else if (schema.Type?.HasFlag(JsonSchemaType.Object) == true)
         {
@@ -938,7 +939,8 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             schemaType = schema.Format == "int64" ? "long" : "int";
 
         else if (schema.Type?.HasFlag(JsonSchemaType.Number) == true)
-            schemaType = schema.Format == "float" ? "float" : "double";
+            schemaType = schema.Format == "float" ? "float" :
+                         schema.Format == "decimal" ? "decimal" : "double";
 
         else if (schema.Type?.HasFlag(JsonSchemaType.Boolean) == true)
             schemaType =  "bool";
@@ -960,7 +962,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
     }
     
     static bool IsNumericFormat(string? format)
-        => format is "int32" or "int64" or "float" or "double";
+        => format is "int32" or "int64" or "float" or "double" or "decimal";
     
     static string GetStringSchemaType(IOpenApiSchema schema) => schema.Format switch
     {

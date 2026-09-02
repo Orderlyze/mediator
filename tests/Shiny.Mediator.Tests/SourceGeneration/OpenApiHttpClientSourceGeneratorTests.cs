@@ -82,6 +82,8 @@ public class OpenApiHttpClientSourceGeneratorTests(ITestOutputHelper output)
     // discriminated models: oneOf/anyOf union (ASP.NET Core) and allOf inheritance (NSwag/Swashbuckle)
     [InlineData("./SourceGeneration/polymorphism-union.json")]
     [InlineData("./SourceGeneration/polymorphism-inheritance.json")]
+    // Numeric enums with x-enumNames / x-enumFlags and decimal formats (NSwag conventions).
+    [InlineData("./SourceGeneration/enums.json")]
     public Task TestApis_Generation(string filePath)
     {
         var content = File.ReadAllText(filePath);
