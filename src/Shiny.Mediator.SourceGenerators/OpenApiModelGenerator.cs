@@ -84,13 +84,22 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         {
             sb.AppendLine($"[global::System.Text.Json.Serialization.JsonConverter(typeof(global::System.Text.Json.Serialization.JsonStringEnumConverter<global::{config.Namespace}.{enumName}>))]");
         }
+        else
+        {
+            // Numeric enums travel as numbers on the wire. The attribute keeps every consumer
+            // honest — the generated per-type converters, the resolver and reflection fallback —
+            // instead of the string-by-default handling used for hand-written contracts.
+            sb.AppendLine($"[global::System.Text.Json.Serialization.JsonConverter(typeof(global::System.Text.Json.Serialization.JsonNumberEnumConverter<global::{config.Namespace}.{enumName}>))]");
+            if (GetExtensionBoolean(schema, "x-enumFlags"))
+                sb.AppendLine("[global::System.Flags]");
+        }
 
         sb.AppendLine(Constants.GeneratedCodeAttributeString);
-        sb.AppendLine($"{accessor} enum {enumName}");
-        sb.AppendLine("{");
 
         if (isStringEnum)
         {
+            sb.AppendLine($"{accessor} enum {enumName}");
+            sb.AppendLine("{");
             foreach (var ev in schema.Enum!)
             {
                 if (ev != null)
@@ -102,13 +111,29 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         }
         else
         {
-            foreach (var ev in schema.Enum!)
+            var values = schema.Enum!
+                .Where(ev => ev != null)
+                .Select(ev => ev!.GetValue<long>())
+                .ToList();
+
+            // Member names come from the NSwag/AutoRest conventions (x-enumNames, x-enum-varnames)
+            // when the document carries them and they line up with the values; otherwise Value{n}.
+            var names = GetExtensionStrings(schema, "x-enumNames") ?? GetExtensionStrings(schema, "x-enum-varnames");
+            if (names == null || names.Count != values.Count)
+                names = values.Select(v => "Value" + v.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+
+            var underlying = values.Any(v => v < Int32.MinValue || v > Int32.MaxValue) ? " : long" : String.Empty;
+            sb.AppendLine($"{accessor} enum {enumName}{underlying}");
+            sb.AppendLine("{");
+
+            var used = new HashSet<string>();
+            for (var i = 0; i < values.Count; i++)
             {
-                if (ev != null)
-                {
-                    var intValue = ev.GetValue<int>();
-                    sb.AppendLine($"    Value{intValue} = {intValue},");
-                }
+                var memberName = names[i].ToSafeIdentifier();
+                while (!used.Add(memberName))
+                    memberName += "_";
+
+                sb.AppendLine($"    {memberName} = {values[i].ToString(System.Globalization.CultureInfo.InvariantCulture)},");
             }
         }
 
@@ -117,6 +142,33 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         context.AddSource(GetFileName(enumName), SourceText.From(sb.ToString(), Encoding.UTF8));
     }
     
+
+    static List<string>? GetExtensionStrings(IOpenApiSchema schema, string name)
+    {
+        if (schema.Extensions == null || !schema.Extensions.TryGetValue(name, out var extension))
+            return null;
+
+        if (extension is JsonNodeExtension { Node: System.Text.Json.Nodes.JsonArray array })
+        {
+            var list = new List<string>();
+            foreach (var item in array)
+            {
+                if (item is not System.Text.Json.Nodes.JsonValue value || value.GetValueKind() != System.Text.Json.JsonValueKind.String)
+                    return null;
+
+                list.Add(value.GetValue<string>());
+            }
+            return list;
+        }
+
+        return null;
+    }
+
+    static bool GetExtensionBoolean(IOpenApiSchema schema, string name)
+        => schema.Extensions != null
+           && schema.Extensions.TryGetValue(name, out var extension)
+           && extension is JsonNodeExtension { Node: System.Text.Json.Nodes.JsonValue value }
+           && value.GetValueKind() == System.Text.Json.JsonValueKind.True;
 
     void GenerateClass(string className, IOpenApiSchema schema)
     {
@@ -341,7 +393,7 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     }
     
     static bool IsNumericFormat(string? format)
-        => format is "int32" or "int64" or "float" or "double";
+        => format is "int32" or "int64" or "float" or "double" or "decimal";
 
     static string GetStringType(IOpenApiSchema schema)
     {
@@ -368,6 +420,7 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         "int32" => "int",
         "int64" => "long",
         "float" => "float",
+        "decimal" => "decimal",
         _ => "double"
     };
 

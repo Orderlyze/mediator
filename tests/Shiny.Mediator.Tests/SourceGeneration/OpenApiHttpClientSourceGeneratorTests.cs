@@ -76,6 +76,8 @@ public class OpenApiHttpClientSourceGeneratorTests(ITestOutputHelper output)
     [InlineData("./SourceGeneration/themeparksapi-v1.yml")]
     [InlineData("./SourceGeneration/fleet.json")]
     [InlineData("./SourceGeneration/test.json")]
+    // Numeric enums with x-enumNames / x-enumFlags and decimal formats (NSwag conventions).
+    [InlineData("./SourceGeneration/enums.json")]
     public Task TestApis_Generation(string filePath)
     {
         var content = File.ReadAllText(filePath);

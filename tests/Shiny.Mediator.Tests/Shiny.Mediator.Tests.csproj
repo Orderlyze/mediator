@@ -72,6 +72,12 @@
                       ContractPostfix="HttpRequest"
                       GenerateJsonConverters="true"
                       Visible="false"/>
+
+        <MediatorHttp Include="SourceGeneration\enums.json"
+                      Namespace="EnumsApi"
+                      ContractPostfix="HttpRequest"
+                      GenerateJsonConverters="true"
+                      Visible="false"/>
     </ItemGroup>
 
     <Import Project="..\..\src\Shiny.Mediator.SourceGenerators\SourceGenerators.targets"/>
