@@ -116,8 +116,18 @@ internal static class HttpHandlerCodeGenerator
             sb.AppendLine();
             sb.AppendLine($"        if (request.{bodyProp.PropertyName} != null)");
             sb.AppendLine("        {");
-            sb.AppendLine($"            var json = services.Serializer.Serialize(request.{bodyProp.PropertyName});");
-            sb.AppendLine("            httpRequest.Content = new global::System.Net.Http.StringContent(json, global::System.Text.Encoding.UTF8, \"application/json\");");
+            if (bodyProp.PropertyType == "global::System.IO.Stream")
+            {
+                var contentType = String.IsNullOrWhiteSpace(bodyProp.ContentType) ? "application/octet-stream" : bodyProp.ContentType;
+                sb.AppendLine($"            var content = new global::System.Net.Http.StreamContent(request.{bodyProp.PropertyName});");
+                sb.AppendLine($"            content.Headers.ContentType = new global::System.Net.Http.Headers.MediaTypeHeaderValue(\"{contentType}\");");
+                sb.AppendLine("            httpRequest.Content = content;");
+            }
+            else
+            {
+                sb.AppendLine($"            var json = services.Serializer.Serialize(request.{bodyProp.PropertyName});");
+                sb.AppendLine("            httpRequest.Content = new global::System.Net.Http.StringContent(json, global::System.Text.Encoding.UTF8, \"application/json\");");
+            }
             sb.AppendLine("        }");
         }
 
@@ -259,7 +269,8 @@ public record HttpPropertyInfo(
     bool IsRequired,
     HttpParameterType ParameterType,
     string? PropertyType = null,
-    string? Comments = null
+    string? Comments = null,
+    string? ContentType = null
 );
 
 public record HandlerRegistrationInfo(
