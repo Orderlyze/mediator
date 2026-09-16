@@ -28,6 +28,46 @@ public class OpenApiPolymorphismSerializationTests
     static T? Read<T>(JsonElement json) => JsonSerializer.Deserialize(json, Metadata<T>());
     static string Write<T>(T value) => JsonSerializer.Serialize(value, Metadata<T>());
 
+    [Fact]
+    public void Optional_Enum_Without_A_Value_Is_Omitted_While_Explicit_Null_Remains_Null()
+    {
+        var split = new CashSplit { Gross = 50m };
+        using var omitted = JsonDocument.Parse(Write(split));
+        omitted.RootElement.TryGetProperty("fundingEvidenceSource", out _).ShouldBeFalse();
+        omitted.RootElement.GetProperty("nullableEvidence").ValueKind.ShouldBe(JsonValueKind.Null);
+        split.FundingEvidenceSource = FundingEvidence.None;
+        using var explicitZero = JsonDocument.Parse(Write(split));
+        explicitZero.RootElement.GetProperty("fundingEvidenceSource").GetInt32().ShouldBe(0);
+        Read<CashSplit>(Write(split))!.FundingEvidenceSource.ShouldBe(FundingEvidence.None);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Complete_Snapshots_Preserve_Date_Only_Time_Only_And_Nullable_Temporal_Values(bool hasOptional)
+    {
+        var date = new DateOnly(2026, 9, 16);
+        var time = new TimeOnly(23, 59, 58, 321);
+        var timestamp = new DateTimeOffset(2026, 9, 16, 23, 59, 58, TimeSpan.FromHours(2));
+        var value = new TemporalEnvelope
+        {
+            Date = date, OptionalDate = hasOptional ? date : null,
+            Time = time, OptionalTime = hasOptional ? time : null,
+            Timestamp = timestamp, OptionalTimestamp = hasOptional ? timestamp : null,
+            Source = new CatalogItem { ProductId = Guid.Parse(Id), CorrelationId = Guid.Parse(Id) }
+        };
+        var read = Read<TemporalEnvelope>(Write(value))!;
+        read.Date.ShouldBe(date);
+        read.OptionalDate.ShouldBe(value.OptionalDate);
+        read.Time.ShouldBe(time);
+        read.OptionalTime.ShouldBe(value.OptionalTime);
+        read.Timestamp.ShouldBe(timestamp);
+        read.OptionalTimestamp.ShouldBe(value.OptionalTimestamp);
+        read.Source.ShouldBeOfType<CatalogItem>().ProductId.ShouldBe(Guid.Parse(Id));
+        Read<DateOnly?>(Write<DateOnly?>(value.OptionalDate)).ShouldBe(value.OptionalDate);
+        Read<TimeOnly?>(Write<TimeOnly?>(value.OptionalTime)).ShouldBe(value.OptionalTime);
+    }
+
     [Theory]
     [MemberData(nameof(Sources))]
     public void Every_Variant_Roundtrips_Through_Required_Base_Property(string sourceJson, Type expectedType)

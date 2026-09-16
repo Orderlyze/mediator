@@ -372,6 +372,7 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
             var symbol = Compilation.GetTypeByMetadataName(fullyQualifiedTypeName)
                 ?? throw new OpenApiPolymorphismException($"Cannot resolve generated model '{fullyQualifiedTypeName}' to emit its converter.");
             var options = new JsonConverterGenerationOptions { UseInternalConverter = config.UseInternalClasses };
+            AddOptionalProperties(options, schema);
             if (polymorphism.Variants.TryGetValue(className, out var variant))
             {
                 options.IncludeInheritedProperties = true;
@@ -379,6 +380,7 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
                 options.DiscriminatorValue = variant.DiscriminatorValue;
                 AddRequiredProperties(options, schema, onlyPolymorphic: false);
                 AddRequiredProperties(options, variant.Parent.Schema, onlyPolymorphic: false);
+                AddOptionalProperties(options, variant.Parent.Schema);
             }
             else
             {
@@ -387,6 +389,14 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
             JsonConverterSourceGenerator.GenerateJsonConverter(context, symbol, attachAttribute: true, options);
         }
         convertedTypes.Add(fullyQualifiedTypeName);
+    }
+
+    static void AddOptionalProperties(JsonConverterGenerationOptions options, IOpenApiSchema schema)
+    {
+        if (schema.Properties == null) return;
+        foreach (var property in schema.Properties)
+            if (property.Value is not null && schema.Required?.Contains(property.Key) != true && !AllowsNull(property.Value))
+                options.OmitNullProperties.Add(property.Key.Pascalize().ToSafeIdentifier());
     }
 
     void AddRequiredProperties(JsonConverterGenerationOptions options, IOpenApiSchema schema, bool onlyPolymorphic)

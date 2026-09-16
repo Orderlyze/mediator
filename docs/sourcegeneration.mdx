@@ -56,8 +56,11 @@ base-typed lists/arrays without a reflection fallback. Converter dispatch uses t
 overloads, which also work when runtime code generation is unavailable. A tag may appear after
 other properties in incoming JSON. Missing, non-string, duplicate or unknown tags and unregistered
 runtime subtypes throw `JsonException`. Required variant fields and required polymorphic properties
-on containing models are checked for presence and nullability. Optional polymorphic properties
+on containing models are checked for presence and nullability. Explicitly nullable optional properties
 may be null. Schema constraints such as numeric ranges and business rules still belong to server validation.
+
+
+The opt-in resolver includes scalar and nullable `DateOnly`, `TimeOnly`, `DateTimeOffset`, GUID and numeric metadata, so complete snapshots round-trip without reflection. An unset optional property whose schema disallows null is omitted on write; an explicitly nullable property retains null. This also prevents sending `fundingEvidenceSource: null` for a cash payment whose server-side enum has a non-null default.
 
 Supported schema shapes:
 

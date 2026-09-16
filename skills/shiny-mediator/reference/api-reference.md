@@ -354,7 +354,7 @@ Generate strongly-typed mediator contracts and handlers from OpenAPI specs via `
 
 `<ShinyMediatorOpenApiPolymorphism>true</ShinyMediatorOpenApiPolymorphism>` is an opt-in MSBuild property (default `false`, compiler-visible). The affected `MediatorHttp` item must also set `GenerateJsonConverters="true"`.
 
-A base component with `oneOf` or `anyOf` and a complete `discriminator.mapping` produces an abstract partial base, sealed partial variants and generated converters/resolver metadata. Mapping values must resolve to distinct local components. The runtime type owns its fixed discriminator; there is no writable discriminator property. Reading a missing/unknown/duplicate/non-string tag throws `JsonException`, as does writing an unregistered runtime subtype. Required fields on variants and required polymorphic properties on containing models are checked for presence and schema nullability. Optional polymorphic properties retain null support.
+A base component with `oneOf` or `anyOf` and a complete `discriminator.mapping` produces an abstract partial base, sealed partial variants and generated converters/resolver metadata. Mapping values must resolve to distinct local components. The runtime type owns its fixed discriminator; there is no writable discriminator property. Reading a missing/unknown/duplicate/non-string tag throws `JsonException`, as does writing an unregistered runtime subtype. Required fields on variants and required polymorphic properties on containing models are checked for presence and schema nullability. Optional properties permit null when the schema explicitly permits it.
 
 Multiple independent hierarchies, nested properties that refer to another hierarchy, base-typed collections and common base properties are supported. Inline or external variants, `allOf` variants, nested inheritance, one variant shared by multiple bases, conflicting discriminator enums and common properties redeclared by a variant produce `SHINYMED005`. Unsupported unions must be remodeled explicitly; never work around the error by hand-writing a second set of DTOs. Other JSON Schema/business constraints remain the server's responsibility.
 
@@ -418,3 +418,5 @@ Multiple independent hierarchies, nested properties that refer to another hierar
 - Use `[MiddlewareOrder(n)]` on middleware classes to control execution order
 - Lower values run first (outermost in pipeline), default is 0
 - Middleware with the same order preserves DI registration order
+
+The opt-in resolver includes scalar and nullable `DateOnly`, `TimeOnly`, `DateTimeOffset`, GUID and numeric metadata, so complete snapshots round-trip without reflection. An unset optional property whose schema disallows null is omitted on write; an explicitly nullable property retains null. This also prevents sending `fundingEvidenceSource: null` for a cash payment whose server-side enum has a non-null default.

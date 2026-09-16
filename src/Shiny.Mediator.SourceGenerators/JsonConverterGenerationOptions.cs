@@ -12,4 +12,5 @@ internal sealed class JsonConverterGenerationOptions
     public string? DiscriminatorValue { get; set; }
     public ISet<string> RequiredProperties { get; } = new HashSet<string>();
     public ISet<string> NonNullProperties { get; } = new HashSet<string>();
+    public ISet<string> OmitNullProperties { get; } = new HashSet<string>();
 }

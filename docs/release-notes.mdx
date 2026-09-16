@@ -6,4 +6,6 @@ import RN from '/src/components/ReleaseNote.astro';
 
 ## 6.9.0 TBD
 
+<RN type="fix">Opt-in OpenAPI serialization now supplies scalar/nullable date and time metadata and omits unset optional, non-nullable properties instead of sending invalid null values.</RN>
+<RN type="fix">File-cache clearing now snapshots its concurrent index without a Count/CopyTo race during simultaneous writes.</RN>
 <RN type="feature">Opt in to discriminated OpenAPI component models with `ShinyMediatorOpenApiPolymorphism` (default off) and `GenerateJsonConverters="true"`: abstract bases, sealed variants, fixed-tag converters and generated resolver metadata preserve every mapped payload; unsupported mappings fail with `SHINYMED005`.</RN>

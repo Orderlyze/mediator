@@ -366,11 +366,17 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         
         foreach (var prop in typeInfo.Properties)
         {
+            var omitNull = prop.IsNullable && settings?.OmitNullProperties.Contains(prop.Name) == true;
+            if (omitNull)
+            {
+                sb.AppendLine($"        if (value.{prop.Name} is not null)");
+                sb.AppendLine("        {");
+            }
             sb.AppendLine($"        writer.WritePropertyName({SymbolDisplay.FormatLiteral(prop.JsonPropertyName, true)});");
             
             var writerMethod = GetWriterMethodForType(prop.TypeName, $"value.{prop.Name}", prop.IsNullable, prop.TypeSymbol);
             
-            if (prop.IsNullable)
+            if (prop.IsNullable && !omitNull)
             {
                 sb.AppendLine($"        if (value.{prop.Name} == null)");
                 sb.AppendLine("            writer.WriteNullValue();");
@@ -396,6 +402,7 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
                     sb.AppendLine($"        JsonSerializer.Serialize(writer, value.{prop.Name}, {SerializerMetadata(prop, settings)});");
                 }
             }
+            if (omitNull) sb.AppendLine("        }");
         }
         
         sb.AppendLine("        writer.WriteEndObject();");

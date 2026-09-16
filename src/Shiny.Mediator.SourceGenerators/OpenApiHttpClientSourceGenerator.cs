@@ -391,13 +391,24 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         // consumers intentionally install only this generated resolver, without reflection.
         if (config.GeneratePolymorphicModels)
         {
-            foreach (var element in modelGenerator.CollectionElementTypeNames.OrderBy(x => x, StringComparer.Ordinal))
+            var scalarTypes = new[]
+            {
+                "bool", "byte", "sbyte", "short", "ushort", "int", "uint", "long", "ulong", "float", "double", "decimal", "string", "char",
+                "global::System.Guid", "global::System.DateTime", "global::System.DateTimeOffset", "global::System.DateOnly",
+                "global::System.TimeOnly", "global::System.TimeSpan", "global::System.Uri"
+            };
+            foreach (var element in modelGenerator.CollectionElementTypeNames.Concat(scalarTypes).Distinct().OrderBy(x => x, StringComparer.Ordinal))
             {
                 var converter = PrimitiveConverter(element);
                 if (converter == null)
                     continue;
                 sb.AppendLine($"        if (type == typeof({element}))");
                 sb.AppendLine($"            return JsonMetadataServices.CreateValueInfo<{element}>(options, JsonMetadataServices.{converter});");
+                if (element != "string" && element != "global::System.Uri")
+                {
+                    sb.AppendLine($"        if (type == typeof({element}?))");
+                    sb.AppendLine($"            return JsonMetadataServices.CreateValueInfo<{element}?>(options, JsonMetadataServices.GetNullableConverter<{element}>(JsonMetadataServices.CreateValueInfo<{element}>(options, JsonMetadataServices.{converter})));");
+                }
             }
         }
 

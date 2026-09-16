@@ -208,3 +208,5 @@ public class MyViewModel
 ```
 
 Strongly typed.  No page required page knowledge from the module upfront.  The other dev team of the module can define HOW things work.
+
+Opt-in models also preserve nullable date/time scalar metadata and omit unset optional fields that the schema does not permit to be null.
