@@ -1,0 +1,73 @@
+---
+title: OpenAPI discriminated models
+description: Generate typed discriminated unions and their JSON converters from OpenAPI.
+---
+
+Enable the opt-in when an OpenAPI component represents a discriminated union:
+
+```xml
+<PropertyGroup>
+  <ShinyMediatorOpenApiPolymorphism>true</ShinyMediatorOpenApiPolymorphism>
+</PropertyGroup>
+<ItemGroup>
+  <MediatorHttp Include="specs/api.json"
+                Namespace="MyApp.Api"
+                GenerateJsonConverters="true" />
+</ItemGroup>
+```
+
+`ShinyMediatorOpenApiPolymorphism` defaults to `false`. It changes the generated model hierarchy,
+so enabling it is an explicit consumer decision. Converter generation is required on every item
+that contains a discriminator.
+
+```yaml
+components:
+  schemas:
+    ItemSource:
+      required: [kind]
+      oneOf:
+        - $ref: '#/components/schemas/CatalogSource'
+        - $ref: '#/components/schemas/CustomSource'
+      discriminator:
+        propertyName: kind
+        mapping:
+          catalog: '#/components/schemas/CatalogSource'
+          custom: '#/components/schemas/CustomSource'
+    CatalogSource:
+      type: object
+      required: [productId]
+      properties:
+        productId: { type: string, format: uuid }
+    CustomSource:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+```
+
+This emits an abstract `ItemSource`, sealed partial `CatalogSource : ItemSource` and
+`CustomSource : ItemSource`, and their converters. A caller supplies
+`new CatalogSource { ProductId = productId }` to a base-typed property. The converter writes
+`{"kind":"catalog","productId":"…"}`. The discriminator belongs to the runtime type;
+there is no independent mutable `Kind` value.
+
+The generated `IJsonTypeInfoResolver` registers with `Shiny.Json` and handles bases, variants and
+base-typed lists/arrays without a reflection fallback. Converter dispatch uses typed metadata
+overloads, which also work when runtime code generation is unavailable. A tag may appear after
+other properties in incoming JSON. Missing, non-string, duplicate or unknown tags and unregistered
+runtime subtypes throw `JsonException`. Required variant fields and required polymorphic properties
+on containing models are checked for presence and nullability. Optional polymorphic properties
+may be null. Schema constraints such as numeric ranges and business rules still belong to server validation.
+
+Supported schema shapes:
+
+- `oneOf` or `anyOf` with an explicit complete mapping to distinct local component references.
+- Multiple independent hierarchies, including a variant whose property refers to another hierarchy.
+- Common properties declared on the base and inherited by every variant.
+- Flat object variants, with an optional discriminator string property/one-value enum matching the mapping.
+
+`SHINYMED005` explains schemas that cannot be represented safely: inline/external/unresolved variants,
+incomplete or ambiguous mappings, a variant shared between bases, nested inheritance hierarchies,
+`allOf` variants, conflicting discriminator enums or redeclared inherited fields. These are build errors
+because generating an empty or partial object would silently lose wire data. Remodel the source schema;
+do not maintain a parallel manual DTO or serializer that can drift from it.

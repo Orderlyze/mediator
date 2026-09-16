@@ -25,6 +25,8 @@ triggers:
   - OpenAPI
   - HTTP client
   - MediatorHttp
+  - ShinyMediatorOpenApiPolymorphism
+  - discriminator
   - swagger
   - contract-first
   - strongly typed HTTP
@@ -456,7 +458,11 @@ Generate contracts, models, and handlers directly from OpenAPI/Swagger specs. Ad
 | `ContractPostfix` | Postfix for generated contract class names |
 | `UseInternalClasses` | Generate internal classes instead of public |
 | `GenerateModelsOnly` | Only generate models, no handlers |
-| `GenerateJsonConverters` | Generate `JsonConverter` implementations for enums |
+| `GenerateJsonConverters` | Generate per-model converters and an AOT-compatible `IJsonTypeInfoResolver` |
+
+**Discriminated models:** enable `<ShinyMediatorOpenApiPolymorphism>true</ShinyMediatorOpenApiPolymorphism>` in a `PropertyGroup` and set `GenerateJsonConverters="true"` on the item. This MSBuild property defaults to `false` so existing generated APIs retain their shape. A component `oneOf` or `anyOf` with an explicit complete `discriminator.mapping` becomes an abstract base and sealed partial variants. Instantiate the concrete type; do not create a mutable `Kind` property or maintain parallel hand-written source DTOs. Each converter writes its fixed discriminator, including when the concrete type is serialized directly. Missing, duplicate, non-string or unknown tags fail with `JsonException`; required variant fields and required polymorphic parent properties cannot silently default when missing/null. Optional polymorphic fields can still be null.
+
+Supported: local component references, multiple independent hierarchies, common properties declared only on the base, nested properties referencing another hierarchy, and base-typed lists/arrays. `SHINYMED005` rejects inline/external/unresolved variants, incomplete/ambiguous mappings, nested inheritance hierarchies, `allOf` variants, shared variants with multiple bases, and redeclared common fields. This feature dispatches by the discriminator; it is not a general JSON Schema validator. Keep full business validation on the server. The generated resolver is registered with `Shiny.Json`; no reflection fallback or additional hand-written serializer model is needed for the hierarchy.
 
 **Registration of generated OpenAPI client:**
 ```csharp
