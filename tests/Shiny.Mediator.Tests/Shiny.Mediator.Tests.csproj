@@ -33,6 +33,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\..\src\Shiny.Mediator.AppFunctions\Shiny.Mediator.AppFunctions.csproj"/>
         <ProjectReference Include="..\..\src\Shiny.Mediator.AspNet\Shiny.Mediator.AspNet.csproj"/>
         <ProjectReference Include="..\..\src\Shiny.Mediator.Blazor\Shiny.Mediator.Blazor.csproj"/>
         <ProjectReference Include="..\..\src\Shiny.Mediator.Caching.MicrosoftMemoryCache\Shiny.Mediator.Caching.MicrosoftMemoryCache.csproj"/>
@@ -88,9 +89,9 @@
     </ItemGroup>
 
     <Target Name="PrepareOpenApiTestFixtures" BeforeTargets="_InjectShinyMediatorAdditionalFiles">
-        <Copy SourceFiles="SourceGeneration/themeparksapi-v1.yml"
+        <Copy SourceFiles="SourceGeneration/themeparksapi-v1.17.yml"
               DestinationFiles="$(BaseIntermediateOutputPath)OpenApiFixtures/ThemeParksApi.yml" />
-        <Copy SourceFiles="SourceGeneration/themeparksapi-v1.yml"
+        <Copy SourceFiles="SourceGeneration/themeparksapi-v1.17.yml"
               DestinationFiles="$(BaseIntermediateOutputPath)OpenApiFixtures/ThemeParksApiGenerated.yml" />
     </Target>
 

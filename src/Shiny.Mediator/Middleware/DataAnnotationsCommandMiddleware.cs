@@ -22,15 +22,22 @@ public class DataAnnotationsCommandMiddleware<TCommand> : AbstractValidationComm
         Validator.TryValidateObject(
             command!,
             new ValidationContext(command!),
-            results
+            results,
+            validateAllProperties: true // otherwise only [Required] runs - [Range], [Url], [StringLength], etc. are skipped
         );
         
-        foreach (var result in results!)
+        foreach (var result in results)
         {
+            // IValidatableObject / class-level attributes may not name a member - key those under "" (object-level,
+            // as ASP.NET ModelState does) rather than dropping them, which let the contract pass validation
+            var anyMember = false;
             foreach (var member in result.MemberNames)
             {
+                anyMember = true;
                 AddError(member, result.ErrorMessage!, populate);
             }
+            if (!anyMember)
+                AddError(String.Empty, result.ErrorMessage!, populate);
         }
 
         return Task.CompletedTask;
