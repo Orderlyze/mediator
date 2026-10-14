@@ -93,7 +93,8 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
                 x.Type.CanBeReferencedByName,
                 IsNullableType(x.Type),
                 GetJsonPropertyName(x),
-                x.Type
+                x.Type,
+                IsIgnoredWhenWritingNull(x)
             ))
             .ToArray();
 
@@ -200,7 +201,8 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
                 x.Type.CanBeReferencedByName,
                 IsNullableType(x.Type),
                 GetJsonPropertyName(x),
-                x.Type
+                x.Type,
+                IsIgnoredWhenWritingNull(x)
             ))
             .ToArray();
 
@@ -348,11 +350,17 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         
         foreach (var prop in typeInfo.Properties)
         {
+            var omitNull = prop.IsNullable && prop.OmitWhenNull;
+            if (omitNull)
+            {
+                sb.AppendLine($"        if (value.{prop.Name} != null)");
+                sb.AppendLine("        {");
+            }
             sb.AppendLine($"        writer.WritePropertyName(\"{prop.JsonPropertyName}\");");
             
             var writerMethod = GetWriterMethodForType(prop.TypeName, $"value.{prop.Name}", prop.IsNullable, prop.TypeSymbol);
             
-            if (prop.IsNullable)
+            if (prop.IsNullable && !omitNull)
             {
                 sb.AppendLine($"        if (value.{prop.Name} == null)");
                 sb.AppendLine("            writer.WriteNullValue();");
@@ -378,6 +386,8 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
                     sb.AppendLine($"        JsonSerializer.Serialize(writer, value.{prop.Name}, options);");
                 }
             }
+            if (omitNull)
+                sb.AppendLine("        }");
         }
         
         sb.AppendLine("        writer.WriteEndObject();");
@@ -611,8 +621,16 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         bool CanBeReferenced, 
         bool IsNullable,
         string JsonPropertyName,
-        ITypeSymbol TypeSymbol
+        ITypeSymbol TypeSymbol,
+        bool OmitWhenNull = false
     );
+
+    // [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] - the property is left out
+    // instead of being written as null (e.g. optional OpenAPI properties that do not allow null)
+    static bool IsIgnoredWhenWritingNull(IPropertySymbol property)
+        => property.GetAttributes().Any(attr =>
+            attr.AttributeClass?.ToDisplayString() == "System.Text.Json.Serialization.JsonIgnoreAttribute" &&
+            attr.NamedArguments.Any(x => x.Key == "Condition" && x.Value.Value is int condition && condition == 3));
 
     static string GetJsonPropertyName(IPropertySymbol property)
     {

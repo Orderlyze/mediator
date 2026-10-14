@@ -15,6 +15,7 @@ namespace TestApi;
 public partial class Zoo
 {
     [global::System.Text.Json.Serialization.JsonPropertyName("animals")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.Animal>? Animals { get; set; }
 
 }
@@ -39,6 +40,7 @@ public abstract partial class Animal
     public abstract string Kind { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("name")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; set; }
 
 }
@@ -157,6 +159,7 @@ public partial class Dog : global::TestApi.Animal
     public override string Kind { get; set; } = "dog";
 
     [global::System.Text.Json.Serialization.JsonPropertyName("breed")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Breed { get; set; }
 
 }

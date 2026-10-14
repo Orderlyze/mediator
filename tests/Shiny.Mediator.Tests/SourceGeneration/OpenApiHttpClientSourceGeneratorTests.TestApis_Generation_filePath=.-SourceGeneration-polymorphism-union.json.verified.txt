@@ -18,6 +18,7 @@ public partial class Drawing
     public string Name { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("primary")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::TestApi.Shape? Primary { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("shapes")]
@@ -45,6 +46,7 @@ public abstract partial class Shape
     public abstract string Type { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("color")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Color { get; set; }
 
 }

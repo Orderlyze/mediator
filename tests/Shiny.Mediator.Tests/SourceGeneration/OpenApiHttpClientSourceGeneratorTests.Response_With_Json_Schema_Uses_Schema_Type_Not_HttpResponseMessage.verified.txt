@@ -15,9 +15,11 @@ namespace TestApi;
 public partial class Item
 {
     [global::System.Text.Json.Serialization.JsonPropertyName("id")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Id { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("name")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; set; }
 
 }

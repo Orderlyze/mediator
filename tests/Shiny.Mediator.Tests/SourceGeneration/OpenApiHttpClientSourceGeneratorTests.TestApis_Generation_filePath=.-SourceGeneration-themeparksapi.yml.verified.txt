@@ -105,6 +105,7 @@ public partial class PriceData
     public string Currency { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("formatted")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Formatted { get; set; }
 
 }
@@ -265,21 +266,27 @@ namespace TestApi;
 public partial class LiveQueue
 {
     [global::System.Text.Json.Serialization.JsonPropertyName("STANDBY")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public LiveQueueStandby? Standby { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("SINGLE_RIDER")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public LiveQueueSingleRider? SingleRider { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("RETURN_TIME")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public LiveQueueReturnTime? ReturnTime { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("PAID_RETURN_TIME")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public LiveQueuePaidReturnTime? PaidReturnTime { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("BOARDING_GROUP")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public LiveQueueBoardingGroup? BoardingGroup { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("PAID_STANDBY")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public LiveQueuePaidStandby? PaidStandby { get; set; }
 
 }
@@ -352,9 +359,11 @@ public partial class TagData
     public string TagName { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("id")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Id { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("value")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Value { get; set; }
 
 }
@@ -417,6 +426,7 @@ public partial class EntityData
     public EntityDataLocation? Location { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("tags")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.TagData>? Tags { get; set; }
 
 }
@@ -467,9 +477,11 @@ public partial class EntityChild
     public global::TestApi.EntityType EntityType { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("externalId")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? ExternalId { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("parentId")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? ParentId { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("location")]
@@ -492,18 +504,23 @@ namespace TestApi;
 public partial class EntityChildrenResponse
 {
     [global::System.Text.Json.Serialization.JsonPropertyName("id")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Id { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("name")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("entityType")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::TestApi.EntityType? EntityType { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("timezone")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Timezone { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("children")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.EntityChild>? Children { get; set; }
 
 }
@@ -532,21 +549,26 @@ public partial class EntityLiveData
     public global::TestApi.EntityType EntityType { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("status")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::TestApi.LiveStatusType? Status { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("lastUpdated")]
     public global::System.DateTimeOffset LastUpdated { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("queue")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::TestApi.LiveQueue? Queue { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("showtimes")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.LiveShowTime>? Showtimes { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("operatingHours")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.LiveShowTime>? OperatingHours { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("diningAvailability")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.DiningAvailability>? DiningAvailability { get; set; }
 
 }
@@ -566,18 +588,23 @@ namespace TestApi;
 public partial class EntityLiveDataResponse
 {
     [global::System.Text.Json.Serialization.JsonPropertyName("id")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Id { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("name")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("entityType")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::TestApi.EntityType? EntityType { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("timezone")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Timezone { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("liveData")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.EntityLiveData>? LiveData { get; set; }
 
 }
@@ -620,12 +647,15 @@ public partial class SchedulePriceObject
     public SchedulePriceObjectType? Type { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("id")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Id { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("name")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("price")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::TestApi.PriceData? Price { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("available")]
@@ -682,6 +712,7 @@ public partial class ScheduleEntry
     public ScheduleEntryType Type { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("purchases")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.SchedulePriceObject>? Purchases { get; set; }
 
 }
@@ -701,21 +732,27 @@ namespace TestApi;
 public partial class EntityScheduleResponse
 {
     [global::System.Text.Json.Serialization.JsonPropertyName("id")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Id { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("name")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("entityType")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::TestApi.EntityType? EntityType { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("timezone")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Timezone { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("schedule")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.ScheduleEntry>? Schedule { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("parks")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.EntityScheduleResponse>? Parks { get; set; }
 
 }
@@ -735,9 +772,11 @@ namespace TestApi;
 public partial class DestinationParkEntry
 {
     [global::System.Text.Json.Serialization.JsonPropertyName("id")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Id { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("name")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; set; }
 
 }
@@ -757,15 +796,19 @@ namespace TestApi;
 public partial class DestinationEntry
 {
     [global::System.Text.Json.Serialization.JsonPropertyName("id")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Id { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("name")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("slug")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Slug { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("parks")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.DestinationParkEntry>? Parks { get; set; }
 
 }
@@ -785,6 +828,7 @@ namespace TestApi;
 public partial class DestinationsResponse
 {
     [global::System.Text.Json.Serialization.JsonPropertyName("destinations")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::System.Collections.Generic.List<global::TestApi.DestinationEntry>? Destinations { get; set; }
 
 }

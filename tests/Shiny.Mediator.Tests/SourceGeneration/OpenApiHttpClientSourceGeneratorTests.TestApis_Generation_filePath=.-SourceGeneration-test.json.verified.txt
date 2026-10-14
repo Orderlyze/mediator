@@ -15,9 +15,11 @@ namespace TestApi;
 public partial class UpdatePropertyRequest
 {
     [global::System.Text.Json.Serialization.JsonPropertyName("title")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Title { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("address")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Address { get; set; }
 
 }
@@ -37,9 +39,11 @@ namespace TestApi;
 public partial class UserInfo
 {
     [global::System.Text.Json.Serialization.JsonPropertyName("id")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Id { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("name")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; set; }
 
 }

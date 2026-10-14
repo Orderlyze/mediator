@@ -134,6 +134,12 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     }
 
 
+    static bool AllowsNull(IOpenApiSchema schema)
+        => schema.Type?.HasFlag(JsonSchemaType.Null) == true ||
+           schema.OneOf?.Any(x => x.Type == JsonSchemaType.Null) == true ||
+           schema.AnyOf?.Any(x => x.Type == JsonSchemaType.Null) == true;
+
+
     void GenerateEnum(string enumName, IOpenApiSchema schema)
     {
         var sb = new StringBuilder();
@@ -384,6 +390,9 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
                     var nullableSuffix = isNullable ? "?" : String.Empty;
                     
                     sb.AppendLine($"    [global::System.Text.Json.Serialization.JsonPropertyName(\"{property.Key}\")]");
+                    // optional but not nullable in the schema: leave it out rather than sending null
+                    if (isNullable && !isRequired && !AllowsNull(propSchema))
+                        sb.AppendLine("    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]");
                     sb.AppendLine($"    public {typeName}{nullableSuffix} {propertyName} {{ get; set; }}");
                     sb.AppendLine();
                 }

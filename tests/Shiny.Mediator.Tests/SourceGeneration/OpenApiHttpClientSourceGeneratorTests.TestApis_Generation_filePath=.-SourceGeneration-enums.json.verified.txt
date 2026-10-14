@@ -79,9 +79,11 @@ public partial class OrderData
     public global::System.Guid OrderId { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("status")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::TestApi.OrderStatus? Status { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("rights")]
+    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public global::TestApi.StaffRight? Rights { get; set; }
 
     [global::System.Text.Json.Serialization.JsonPropertyName("priority")]
