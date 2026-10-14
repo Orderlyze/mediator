@@ -42,6 +42,13 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     /// </summary>
     public IDictionary<string, bool> EnumTypeNames => this.enumTypes;
 
+    /// <summary>
+    /// Element types of every generated <c>List&lt;T&gt;</c> (scalars, nested lists, models) so the
+    /// resolver can wire collections that are not a generated model's own list.
+    /// </summary>
+    public IReadOnlyCollection<string> CollectionElementTypeNames => this.collectionElementTypes;
+    readonly HashSet<string> collectionElementTypes = new(StringComparer.Ordinal);
+
     public void UpdateCompilation(Compilation newCompilation) => Compilation = newCompilation;
 
 
@@ -133,6 +140,11 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         return true;
     }
 
+
+    bool ReferencesPolymorphicBase(IOpenApiSchema schema)
+        => schema is OpenApiSchemaReference reference
+            ? reference.Reference.Id != null && this.polymorphism.Bases.ContainsKey(reference.Reference.Id)
+            : schema.OneOf?.Any(ReferencesPolymorphicBase) == true || schema.AnyOf?.Any(ReferencesPolymorphicBase) == true;
 
     static bool AllowsNull(IOpenApiSchema schema)
         => schema.Type?.HasFlag(JsonSchemaType.Null) == true ||
@@ -390,6 +402,11 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
                     var nullableSuffix = isNullable ? "?" : String.Empty;
                     
                     sb.AppendLine($"    [global::System.Text.Json.Serialization.JsonPropertyName(\"{property.Key}\")]");
+                    // required: must be present when reading (generated converter + reflection)
+                    // (only inside discriminated hierarchies and for properties holding one, so a
+                    // union is never silently read as an empty object)
+                    if (isRequired && !AllowsNull(propSchema) && (polymorphicVariant != null || ReferencesPolymorphicBase(propSchema)))
+                        sb.AppendLine("    [global::System.Text.Json.Serialization.JsonRequired]");
                     // optional but not nullable in the schema: leave it out rather than sending null
                     if (isNullable && !isRequired && !AllowsNull(propSchema))
                         sb.AppendLine("    [global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]");
@@ -637,7 +654,10 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
             {
                 var listType = GetSchemaType(schema.Items);
                 if (listType != null)
+                {
+                    this.collectionElementTypes.Add(listType);
                     type = $"global::System.Collections.Generic.List<{listType}>";
+                }
             }
             else if (schema.Type.Value.HasFlag(JsonSchemaType.String))
             {

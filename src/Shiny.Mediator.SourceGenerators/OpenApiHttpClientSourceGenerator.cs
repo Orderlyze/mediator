@@ -386,6 +386,30 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             sb.AppendLine($"            return CreateArray<{typeRef}>(options);");
         }
 
+        // Scalars and their Nullable<T> counterparts: generated converters ask the options for
+        // every member type, and the resolver chain carries no reflection fallback.
+        foreach (var scalar in ScalarTypes)
+        {
+            var converter = PrimitiveConverter(scalar)!;
+            sb.AppendLine($"        if (type == typeof({scalar}))");
+            sb.AppendLine($"            return JsonMetadataServices.CreateValueInfo<{scalar}>(options, JsonMetadataServices.{converter});");
+            if (scalar != "string" && scalar != "global::System.Uri")
+            {
+                sb.AppendLine($"        if (type == typeof({scalar}?))");
+                sb.AppendLine($"            return JsonMetadataServices.CreateValueInfo<{scalar}?>(options, JsonMetadataServices.GetNullableConverter<{scalar}>(JsonMetadataServices.CreateValueInfo<{scalar}>(options, JsonMetadataServices.{converter})));");
+            }
+        }
+
+        // Lists of scalars, enums and nested lists (List<List<string>>) - models are covered above.
+        var convertedRefs = new HashSet<string>(ordered.Select(x => $"global::{x}"), StringComparer.Ordinal);
+        foreach (var element in modelGenerator.CollectionElementTypeNames.OrderBy(x => x, StringComparer.Ordinal))
+        {
+            if (convertedRefs.Contains(element) || convertedRefs.Contains($"global::{config.Namespace}.{element}"))
+                continue;
+            sb.AppendLine($"        if (type == typeof(global::System.Collections.Generic.List<{element}>))");
+            sb.AppendLine($"            return CreateList<{element}>(options);");
+        }
+
         sb.AppendLine("        return null;");
         sb.AppendLine("    }");
         sb.AppendLine();
@@ -448,6 +472,40 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
 
         context.AddSource(GetFileName(config.Namespace, resolverName), SourceText.From(sb.ToString(), Encoding.UTF8));
     }
+
+
+    static readonly string[] ScalarTypes =
+    {
+        "bool", "byte", "sbyte", "short", "ushort", "int", "uint", "long", "ulong", "float", "double", "decimal", "string", "char",
+        "global::System.Guid", "global::System.DateTime", "global::System.DateTimeOffset", "global::System.DateOnly",
+        "global::System.TimeOnly", "global::System.TimeSpan", "global::System.Uri"
+    };
+
+    static string? PrimitiveConverter(string type) => type switch
+    {
+        "bool" => "BooleanConverter",
+        "byte" => "ByteConverter",
+        "sbyte" => "SByteConverter",
+        "short" => "Int16Converter",
+        "ushort" => "UInt16Converter",
+        "int" => "Int32Converter",
+        "uint" => "UInt32Converter",
+        "long" => "Int64Converter",
+        "ulong" => "UInt64Converter",
+        "float" => "SingleConverter",
+        "double" => "DoubleConverter",
+        "decimal" => "DecimalConverter",
+        "string" => "StringConverter",
+        "char" => "CharConverter",
+        "global::System.Guid" => "GuidConverter",
+        "global::System.DateTime" => "DateTimeConverter",
+        "global::System.DateTimeOffset" => "DateTimeOffsetConverter",
+        "global::System.DateOnly" => "DateOnlyConverter",
+        "global::System.TimeOnly" => "TimeOnlyConverter",
+        "global::System.TimeSpan" => "TimeSpanConverter",
+        "global::System.Uri" => "UriConverter",
+        _ => null
+    };
 
 
     static string DeriveContextName(string namespaceName)

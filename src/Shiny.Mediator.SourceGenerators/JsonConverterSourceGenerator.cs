@@ -94,7 +94,9 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
                 IsNullableType(x.Type),
                 GetJsonPropertyName(x),
                 x.Type,
-                IsIgnoredWhenWritingNull(x)
+                IsIgnoredWhenWritingNull(x),
+                IsJsonRequired(x),
+                IsJsonRequired(x) && !AcceptsNull(x.Type)
             ))
             .ToArray();
 
@@ -202,7 +204,9 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
                 IsNullableType(x.Type),
                 GetJsonPropertyName(x),
                 x.Type,
-                IsIgnoredWhenWritingNull(x)
+                IsIgnoredWhenWritingNull(x),
+                IsJsonRequired(x),
+                IsJsonRequired(x) && !AcceptsNull(x.Type)
             ))
             .ToArray();
 
@@ -429,6 +433,9 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
             sb.AppendLine($"        var result = new {typeInfo.Name}();");
         }
         
+        foreach (var prop in typeInfo.Properties.Where(x => x.Required))
+            sb.AppendLine($"        var __seen{prop.Name} = false;");
+
         sb.AppendLine();
         sb.AppendLine("        while (reader.Read())");
         sb.AppendLine("        {");
@@ -447,6 +454,13 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         foreach (var prop in typeInfo.Properties)
         {
             sb.AppendLine($"                case \"{prop.JsonPropertyName}\":");
+            if (prop.Required)
+                sb.AppendLine($"                    __seen{prop.Name} = true;");
+            if (prop.RejectsNull)
+            {
+                sb.AppendLine("                    if (reader.TokenType == JsonTokenType.Null)");
+                sb.AppendLine($"                        throw new JsonException(\"Required property '{prop.JsonPropertyName}' of {typeInfo.Name} must not be null\");");
+            }
             
             var readerMethod = GetReaderMethodForType(prop.TypeName, prop.IsNullable, prop.TypeSymbol);
             var targetVariable = isRecord ? ToCamelCase(prop.Name) : $"result.{prop.Name}";
@@ -469,6 +483,12 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine();
+
+        foreach (var prop in typeInfo.Properties.Where(x => x.Required))
+        {
+            sb.AppendLine($"        if (!__seen{prop.Name})");
+            sb.AppendLine($"            throw new JsonException(\"Missing required property '{prop.JsonPropertyName}' on {typeInfo.Name}\");");
+        }
         
         if (isRecord)
         {
@@ -622,8 +642,20 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         bool IsNullable,
         string JsonPropertyName,
         ITypeSymbol TypeSymbol,
-        bool OmitWhenNull = false
+        bool OmitWhenNull = false,
+        bool Required = false,
+        bool RejectsNull = false
     );
+
+    // [JsonRequired]: the property must be present - and must not be null unless its type is
+    // annotated nullable (generated OpenAPI models mark required, non-nullable schema properties)
+    static bool IsJsonRequired(IPropertySymbol property)
+        => property.GetAttributes().Any(attr =>
+            attr.AttributeClass?.ToDisplayString() == "System.Text.Json.Serialization.JsonRequiredAttribute");
+
+    static bool AcceptsNull(ITypeSymbol type)
+        => type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T ||
+           (type.IsReferenceType && type.NullableAnnotation == NullableAnnotation.Annotated);
 
     // [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] - the property is left out
     // instead of being written as null (e.g. optional OpenAPI properties that do not allow null)
