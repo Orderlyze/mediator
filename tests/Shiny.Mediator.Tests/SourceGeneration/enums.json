@@ -15,6 +15,20 @@
           }
         }
       }
+    },
+    "/orders/{orderId}/status": {
+      "get": {
+        "operationId": "getOrderStatus",
+        "parameters": [
+          { "name": "orderId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderStatus" } } }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -34,8 +48,19 @@
         "type": "integer",
         "enum": [10, 20]
       },
+      "ReturnState": {
+        "type": "string",
+        "enum": ["open", "Too Many Requests", "class"]
+      },
+      "BigCode": {
+        "type": "integer",
+        "format": "int64",
+        "enum": [1, 5000000000],
+        "x-enumNames": ["Small", "Big"]
+      },
       "OrderData": {
         "type": "object",
+        "required": ["status"],
         "properties": {
           "orderId": { "type": "string", "format": "uuid" },
           "status": { "$ref": "#/components/schemas/OrderStatus" },
@@ -43,7 +68,11 @@
           "priority": { "oneOf": [ { "type": "null" }, { "$ref": "#/components/schemas/Priority" } ] },
           "totalGross": { "type": ["number", "string"], "format": "decimal", "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$" },
           "discountRate": { "type": ["null", "number", "string"], "format": "decimal" },
-          "ratio": { "type": "number", "format": "double" }
+          "ratio": { "type": "number", "format": "double" },
+          "returnState": { "$ref": "#/components/schemas/ReturnState" },
+          "states": { "type": "array", "items": { "$ref": "#/components/schemas/ReturnState" } },
+          "code": { "$ref": "#/components/schemas/BigCode" },
+          "channel": { "type": "string", "enum": ["dineIn", "takeAway"] }
         }
       }
     }

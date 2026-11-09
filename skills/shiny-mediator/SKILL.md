@@ -233,9 +233,14 @@ public partial class Customer { /* ... */ }
 ```
 
 **OpenAPI HTTP clients with `GenerateJsonConverters="true"`:** the OpenAPI generator emits a
-custom `IJsonTypeInfoResolver` covering every generated model + contract + enum
-(including `Nullable<TEnum>` / `List<T>` / `T[]` shapes) plus a `[ModuleInitializer]`. Users don't
-need `[ShinyJsonContext]` for OpenAPI-generated types.
+custom `IJsonTypeInfoResolver` covering every generated model + contract (including `List<T>` /
+`T[]` shapes) plus a `[ModuleInitializer]`. Users don't need `[ShinyJsonContext]` for
+OpenAPI-generated types. Enum members of the models are read and written by the model's converter
+through a static `{Enum}Json` helper per enum: the document's wire values directly, anything else
+through the options' own metadata for the enum (if any), otherwise a `JsonException`. The resolver
+only registers enums that generated code still asks the options for (a request body, a response, or
+a member shape other than `E`, `E?` and `List<E>`), so AOT/ReadyToRun don't compile
+System.Text.Json's generic converter machinery once per enum.
 
 **Attribute-driven HTTP clients (`[Get]` / `[Post]` / `[Body]`):** user-written types; require
 explicit `[ShinyJsonContext]` registration.

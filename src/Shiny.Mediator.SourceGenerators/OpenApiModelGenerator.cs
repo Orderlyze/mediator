@@ -34,13 +34,46 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     public ISet<string> ConvertedTypeNames => this.convertedTypes;
 
     /// <summary>
-    /// Map of FQN → isStringEnum for every enum the model generator has emitted. The OpenAPI
-    /// resolver emitter uses this to register enum types with the right converter
-    /// (<see cref="System.Text.Json.Serialization.JsonStringEnumConverter{T}"/> for string enums,
-    /// <see cref="System.Text.Json.Serialization.Metadata.JsonMetadataServices.GetEnumConverter{T}"/>
-    /// for numeric enums) and to wire their <c>Nullable&lt;TEnum&gt;</c> counterparts.
+    /// Map of FQN → isStringEnum for every enum the model generator emits (component enums are known
+    /// from <see cref="SetComponents"/> on, inline enums once generated). Each enum comes with a static
+    /// <c>{Enum}Json</c> helper that the per-type converters call directly, see <see cref="GetEnumJsonHelper"/>.
     /// </summary>
     public IDictionary<string, bool> EnumTypeNames => this.enumTypes;
+
+    /// <summary>
+    /// FQNs of the enums that some generated code reaches through the
+    /// <see cref="System.Text.Json.JsonSerializerOptions"/> instead of their helper: a request body, a
+    /// response, or a member shape the per-type converters don't inline (anything but E, E? and List&lt;E&gt;).
+    /// Only these get resolver entries — each entry instantiates System.Text.Json's generic converter and
+    /// metadata machinery for that one value type, which AOT/ReadyToRun compile separately per enum.
+    /// </summary>
+    public IReadOnlyCollection<string> EnumsNeedingTypeInfo => this.enumsNeedingTypeInfo;
+    readonly HashSet<string> enumsNeedingTypeInfo = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The static <c>{Enum}Json</c> helper of a generated enum, null for any other type. Takes the type
+    /// as the models declare it: <c>global::</c>-qualified, or bare for inline enums (same namespace).
+    /// </summary>
+    public string? GetEnumJsonHelper(string typeName)
+        => GetEnumName(typeName) is { } fqn ? $"global::{fqn}Json" : null;
+
+    /// <summary>Marks every generated enum named in <paramref name="typeName"/> (E, E?, List&lt;E&gt;, Dictionary&lt;string, E&gt; …) as reached through the options.</summary>
+    public void RequireEnumTypeInfo(string typeName)
+    {
+        foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(typeName, @"(?:global::)?[A-Za-z_][\w.]*"))
+        {
+            if (GetEnumName(match.Value) is { } fqn)
+                this.enumsNeedingTypeInfo.Add(fqn);
+        }
+    }
+
+    string? GetEnumName(string typeName)
+    {
+        var fqn = typeName.StartsWith("global::", StringComparison.Ordinal)
+            ? typeName.Substring("global::".Length)
+            : typeName.Contains(".") ? typeName : $"{config.Namespace}.{typeName}";
+        return this.enumTypes.ContainsKey(fqn) ? fqn : null;
+    }
 
     /// <summary>
     /// Element types of every generated <c>List&lt;T&gt;</c> (scalars, nested lists, models) so the
@@ -63,6 +96,13 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     {
         this.components = schemas;
         this.polymorphism = OpenApiPolymorphism.Analyze(schemas, warn);
+
+        // a model's converter can be written before an enum it references is generated
+        foreach (var schema in schemas)
+        {
+            if (IsGeneratableEnum(schema.Value))
+                this.enumTypes[$"{config.Namespace}.{schema.Key.Pascalize().ToSafeIdentifier()}"] = IsStringEnum(schema.Value);
+        }
     }
 
 
@@ -102,28 +142,19 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         if (values.All(x => x!.GetValueKind() == System.Text.Json.JsonValueKind.String))
             return true;
 
-        return values.All(x => TryGetEnumInt(x!, out _));
+        // integral values beyond int make a long-backed enum
+        return values.All(x => TryGetEnumLong(x!, out _));
     }
 
 
-    // YAML documents surface numbers as decimal-backed JsonValues, so GetValue<int>() throws - parse the raw json instead
-    static bool TryGetEnumInt(System.Text.Json.Nodes.JsonNode node, out int value)
+    static bool IsStringEnum(IOpenApiSchema schema)
     {
-        value = 0;
-        if (node.GetValueKind() != System.Text.Json.JsonValueKind.Number)
-            return false;
-
-        if (!Decimal.TryParse(node.ToJsonString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d))
-            return false;
-
-        if (d != Decimal.Truncate(d) || d < Int32.MinValue || d > Int32.MaxValue)
-            return false;
-
-        value = (int)d;
-        return true;
+        var firstValue = schema.Enum?.FirstOrDefault();
+        return firstValue != null && firstValue.GetValueKind() == System.Text.Json.JsonValueKind.String;
     }
 
 
+    // YAML documents surface numbers as decimal-backed JsonValues, so GetValue<long>() throws - parse the raw json instead
     static bool TryGetEnumLong(System.Text.Json.Nodes.JsonNode node, out long value)
     {
         value = 0;
@@ -163,12 +194,12 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         sb.AppendLine($"namespace {config.Namespace};");
         sb.AppendLine();
 
-        // Check if the first enum value is a string-based value
-        var firstValue = schema.Enum?.FirstOrDefault();
-        var isStringEnum = firstValue != null && firstValue.GetValueKind() == System.Text.Json.JsonValueKind.String;
-
-        // Track the enum so the resolver emitter can wire its converter + nullable counterpart.
+        var isStringEnum = IsStringEnum(schema);
         this.enumTypes[$"{config.Namespace}.{enumName}"] = isStringEnum;
+
+        // wire value → member, for the {Enum}Json helper below
+        var wireNames = new List<(string Member, string Wire)>();
+        var underlyingType = "int";
 
         if (isStringEnum)
         {
@@ -215,6 +246,7 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
                         sb.AppendLine($"    [global::System.Text.Json.Serialization.JsonStringEnumMemberName(\"{strValue.Replace("\\", "\\\\").Replace("\"", "\\\"")}\")]");
 
                     sb.AppendLine($"    {memberName},");
+                    wireNames.Add((memberName, strValue));
                 }
             }
         }
@@ -233,8 +265,9 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
                     ? "ValueMinus" + (-v).ToString(System.Globalization.CultureInfo.InvariantCulture)
                     : "Value" + v.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
 
-            var underlying = values.Any(v => v < Int32.MinValue || v > Int32.MaxValue) ? " : long" : String.Empty;
-            sb.AppendLine($"{accessor} enum {enumName}{underlying}");
+            if (values.Any(v => v < Int32.MinValue || v > Int32.MaxValue))
+                underlyingType = "long";
+            sb.AppendLine($"{accessor} enum {enumName}{(underlyingType == "long" ? " : long" : String.Empty)}");
             sb.AppendLine("{");
 
             var used = new HashSet<string>();
@@ -250,7 +283,68 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
 
         sb.AppendLine("}");
 
+        if (config.GenerateJsonConverters)
+            AppendEnumJsonHelper(sb, enumName, isStringEnum, underlyingType, wireNames);
+
         context.AddSource(GetFileName(enumName), SourceText.From(sb.ToString(), Encoding.UTF8));
+    }
+
+
+    /// <summary>
+    /// Static <c>{Enum}Json</c> helper the per-type converters call for members of this enum. It reads
+    /// and writes exactly the wire format of the document — the declared strings, or integers — with
+    /// plain code. That keeps System.Text.Json's generic converter and metadata types from being
+    /// instantiated for every enum, which AOT/ReadyToRun compile separately per value type (some 100 KB
+    /// each). Any other input (another spelling, a number for a string enum) goes to the options'
+    /// own metadata for the enum when there is one (reflection, the enum's [JsonConverter], app
+    /// converters), and is a <see cref="System.Text.Json.JsonException"/> otherwise.
+    /// </summary>
+    void AppendEnumJsonHelper(StringBuilder sb, string enumName, bool isStringEnum, string underlyingType, List<(string Member, string Wire)> wireNames)
+    {
+        var typeRef = $"global::{config.Namespace}.{enumName}";
+
+        sb.AppendLine();
+        sb.AppendLine("/// <summary>Reads and writes the wire values of <see cref=\"" + enumName + "\"/> for the generated JSON converters.</summary>");
+        sb.AppendLine("[global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]");
+        sb.AppendLine(Constants.GeneratedCodeAttributeString);
+        sb.AppendLine($"{accessor} static class {enumName}Json");
+        sb.AppendLine("{");
+        sb.AppendLine($"    public static void Write(global::System.Text.Json.Utf8JsonWriter writer, {typeRef} value)");
+        sb.AppendLine("    {");
+        if (isStringEnum)
+        {
+            sb.AppendLine("        switch (value)");
+            sb.AppendLine("        {");
+            foreach (var (member, wire) in wireNames)
+                sb.AppendLine($"            case {typeRef}.{member}: writer.WriteStringValue(\"{Escape(wire)}\"); return;");
+            sb.AppendLine("        }");
+            sb.AppendLine("        // no member: its number, as JsonStringEnumConverter writes it");
+        }
+        sb.AppendLine($"        writer.WriteNumberValue(({underlyingType})value);");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine($"    public static {typeRef} Read(ref global::System.Text.Json.Utf8JsonReader reader, global::System.Text.Json.JsonSerializerOptions options)");
+        sb.AppendLine("    {");
+        if (isStringEnum)
+        {
+            sb.AppendLine("        if (reader.TokenType == global::System.Text.Json.JsonTokenType.String)");
+            sb.AppendLine("        {");
+            foreach (var (member, wire) in wireNames)
+                sb.AppendLine($"            if (reader.ValueTextEquals(\"{Escape(wire)}\")) return {typeRef}.{member};");
+            sb.AppendLine("        }");
+        }
+        else
+        {
+            var tryGet = underlyingType == "long" ? "TryGetInt64" : "TryGetInt32";
+            sb.AppendLine($"        if (reader.TokenType == global::System.Text.Json.JsonTokenType.Number && reader.{tryGet}(out var number))");
+            sb.AppendLine($"            return ({typeRef})number;");
+        }
+        sb.AppendLine();
+        sb.AppendLine($"        if (options.TryGetTypeInfo(typeof({typeRef}), out var typeInfo))");
+        sb.AppendLine($"            return ({typeRef})global::System.Text.Json.JsonSerializer.Deserialize(ref reader, typeInfo);");
+        sb.AppendLine($"        throw new global::System.Text.Json.JsonException(\"The JSON value could not be converted to {config.Namespace}.{enumName}.\");");
+        sb.AppendLine("    }");
+        sb.AppendLine("}");
     }
     
 
@@ -450,7 +544,7 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
                     var typeSymbol = Compilation.GetTypeByMetadataName(fullyQualifiedTypeName);
                     if (typeSymbol != null)
                     {
-                        JsonConverterSourceGenerator.GenerateJsonConverter(context, typeSymbol);
+                        JsonConverterSourceGenerator.GenerateJsonConverter(context, typeSymbol, this.GetEnumJsonHelper, this.RequireEnumTypeInfo);
                         this.convertedTypes.Add(fullyQualifiedTypeName);
                     }
                 }
