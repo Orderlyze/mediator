@@ -61,6 +61,8 @@
         <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="GenerateJsonConverters" Visible="false"/>
         <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="ContractPrefix" Visible="false"/>
         <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="ContractPostfix" Visible="false"/>
+        <!-- operation list: one operationId or schema name per line, path relative to the OpenAPI file; only those are generated -->
+        <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="Operations" Visible="false"/>
     </ItemGroup>
 
     <Target Name="_InjectShinyMediatorAdditionalFiles" BeforeTargets="GenerateMSBuildEditorConfigFileShouldRun">
@@ -73,7 +75,21 @@
                              GenerateJsonConverters="%(MediatorHttp.GenerateJsonConverters)"
                              ContractPrefix="%(MediatorHttp.ContractPrefix)"
                              ContractPostfix="%(MediatorHttp.ContractPostfix)"
+                             Operations="%(MediatorHttp.Operations)"
                              SourceItemGroup="MediatorHttp"/>
+        </ItemGroup>
+    </Target>
+
+    <!--
+        The generator reads an operation list as an additional file and matches it by path. Own target name: a
+        Shiny.Mediator package imported next to this file defines _InjectShinyMediatorAdditionalFiles too, and the
+        later definition replaces the earlier one.
+    -->
+    <Target Name="_InjectShinyMediatorOperationLists" BeforeTargets="GenerateMSBuildEditorConfigFileShouldRun">
+        <ItemGroup>
+            <_ShinyMediatorHttpWithOperations Include="@(MediatorHttp)" Condition="'%(MediatorHttp.Operations)' != ''"/>
+            <AdditionalFiles Include="@(_ShinyMediatorHttpWithOperations->'%(RelativeDir)%(Operations)')"
+                             SourceItemGroup="MediatorHttpOperations"/>
         </ItemGroup>
     </Target>
 </Project>

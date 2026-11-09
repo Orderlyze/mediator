@@ -652,7 +652,297 @@ public class OpenApiHttpClientSourceGeneratorTests(ITestOutputHelper output)
     }
 
 
-    static GeneratorRunResult RunGenerator(AdditionalText[] additionalFiles, Dictionary<string, string> buildProps)
+    const string OperationFilterSpec = """
+        openapi: 3.0.1
+        info:
+          title: Test API
+          version: '1.0'
+        paths:
+          /orders/{id}:
+            get:
+              operationId: getOrder
+              parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+              responses:
+                '200':
+                  description: OK
+                  content:
+                    application/json:
+                      schema:
+                        $ref: '#/components/schemas/Order'
+          /orders:
+            post:
+              operationId: createOrder
+              requestBody:
+                content:
+                  application/json:
+                    schema:
+                      $ref: '#/components/schemas/CreateOrder'
+              responses:
+                '200':
+                  description: OK
+                  content:
+                    application/json:
+                      schema:
+                        $ref: '#/components/schemas/Order'
+          /admin/stats:
+            get:
+              operationId: getStats
+              responses:
+                '200':
+                  description: OK
+                  content:
+                    application/json:
+                      schema:
+                        $ref: '#/components/schemas/Stats'
+        components:
+          schemas:
+            Order:
+              type: object
+              properties:
+                lines:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/OrderLine'
+                payment:
+                  $ref: '#/components/schemas/Payment'
+                status:
+                  $ref: '#/components/schemas/OrderStatus'
+                extras:
+                  type: object
+                  additionalProperties:
+                    $ref: '#/components/schemas/OrderExtra'
+            OrderLine:
+              type: object
+              properties:
+                product:
+                  type: string
+            OrderStatus:
+              type: string
+              enum:
+                - open
+                - paid
+            OrderExtra:
+              type: object
+              properties:
+                name:
+                  type: string
+            Payment:
+              type: object
+              discriminator:
+                propertyName: kind
+              required:
+                - kind
+              properties:
+                kind:
+                  type: string
+            CardPayment:
+              allOf:
+                - $ref: '#/components/schemas/Payment'
+                - type: object
+                  properties:
+                    last4:
+                      type: string
+            CreateOrder:
+              type: object
+              properties:
+                note:
+                  type: string
+            Stats:
+              type: object
+              properties:
+                count:
+                  type: integer
+                detail:
+                  $ref: '#/components/schemas/StatsDetail'
+            StatsDetail:
+              type: object
+              properties:
+                text:
+                  type: string
+            Event:
+              type: object
+              required:
+                - $type
+              anyOf:
+                - $ref: '#/components/schemas/EventOpened'
+                - $ref: '#/components/schemas/EventClosed'
+              discriminator:
+                propertyName: $type
+                mapping:
+                  opened: '#/components/schemas/EventOpened'
+                  closed: '#/components/schemas/EventClosed'
+            EventOpened:
+              type: object
+              properties:
+                $type:
+                  type: string
+                  enum:
+                    - opened
+                at:
+                  type: string
+            EventClosed:
+              type: object
+              properties:
+                $type:
+                  type: string
+                  enum:
+                    - closed
+                reason:
+                  $ref: '#/components/schemas/CloseReason'
+            CloseReason:
+              type: string
+              enum:
+                - done
+                - cancelled
+        """;
+
+    static readonly Dictionary<string, string> OperationFilterProps = new()
+    {
+        ["build_metadata.AdditionalFiles.SourceItemGroup"] = "MediatorHttp",
+        ["build_metadata.AdditionalFiles.Namespace"] = "TestApi",
+        ["build_metadata.AdditionalFiles.Operations"] = "operations.txt",
+        ["build_property.RootNamespace"] = "UnitTests",
+        ["build_property.AssemblyName"] = "UnitTests"
+    };
+
+    static readonly Dictionary<string, Dictionary<string, string>> OperationListOptions = new()
+    {
+        ["/specs/operations.txt"] = new()
+        {
+            ["build_metadata.AdditionalFiles.SourceItemGroup"] = "MediatorHttpOperations",
+            ["build_metadata.AdditionalFiles.Operations"] = ""
+        }
+    };
+
+
+    [Fact(DisplayName = "OpenAPI - an operation list generates only its operations and the schemas they reach")]
+    public void Operation_List_Generates_Only_Listed_Operations_And_Reached_Schemas()
+    {
+        var additionalFiles = new AdditionalText[]
+        {
+            new MockAdditionalText("/specs/api.yaml", OperationFilterSpec),
+            new MockAdditionalText("/specs/operations.txt", "getOrder\n# only what the app calls\n\ncreateOrder  # comment\nmissingOp\n")
+        };
+
+        var result = RunGenerator(additionalFiles, OperationFilterProps, OperationListOptions);
+        result.Diagnostics.Where(x => x.Severity == DiagnosticSeverity.Error).ShouldBeEmpty();
+
+        var unknown = result.Diagnostics.Single(x => x.Id == "SHINYMED011");
+        unknown.GetMessage().ShouldContain("missingOp");
+
+        var code = String.Join("\n", result.GeneratedSources.Select(x => x.SourceText.ToString()));
+        bool Declares(string name) => System.Text.RegularExpressions.Regex.IsMatch(code, $@"\b(class|record|enum) {name}\b");
+
+        Declares("GetOrderHttpRequest").ShouldBeTrue();
+        Declares("CreateOrderHttpRequest").ShouldBeTrue();
+        Declares("GetStatsHttpRequest").ShouldBeFalse();
+
+        // reached via response, request body, array items, property, enum and additionalProperties
+        foreach (var name in new[] { "Order", "CreateOrder", "OrderLine", "Payment", "OrderStatus", "OrderExtra" })
+            Declares(name).ShouldBeTrue(name);
+
+        // a variant of a reached discriminated base stays, although no operation names it
+        Declares("CardPayment").ShouldBeTrue();
+
+        // only reachable from the unlisted operation
+        Declares("Stats").ShouldBeFalse();
+        Declares("StatsDetail").ShouldBeFalse();
+    }
+
+
+    [Fact(DisplayName = "OpenAPI - a schema name in the operation list keeps that schema and what it reaches, without an operation")]
+    public void Operation_List_Keeps_Listed_Schemas()
+    {
+        var additionalFiles = new AdditionalText[]
+        {
+            new MockAdditionalText("/specs/api.yaml", OperationFilterSpec),
+            new MockAdditionalText("/specs/operations.txt", "Stats\n")
+        };
+
+        var result = RunGenerator(additionalFiles, OperationFilterProps, OperationListOptions);
+        result.Diagnostics.Where(x => x.Severity != DiagnosticSeverity.Hidden && x.Id.StartsWith("SHINYMED01")).ShouldBeEmpty();
+
+        var code = String.Join("\n", result.GeneratedSources.Select(x => x.SourceText.ToString()));
+        bool Declares(string name) => System.Text.RegularExpressions.Regex.IsMatch(code, $@"\b(class|record|enum) {name}\b");
+
+        Declares("Stats").ShouldBeTrue();
+        Declares("StatsDetail").ShouldBeTrue();
+        Declares("GetStatsHttpRequest").ShouldBeFalse();
+        Declares("Order").ShouldBeFalse();
+    }
+
+
+    [Fact(DisplayName = "OpenAPI - an operation list keeps a union hierarchy whole when it names one variant")]
+    public void Operation_List_Keeps_Union_Hierarchy_Whole()
+    {
+        var additionalFiles = new AdditionalText[]
+        {
+            new MockAdditionalText("/specs/api.yaml", OperationFilterSpec),
+            new MockAdditionalText("/specs/operations.txt", "EventOpened\n")
+        };
+
+        var result = RunGenerator(additionalFiles, OperationFilterProps, OperationListOptions);
+        result.Diagnostics.Where(x => x.Severity == DiagnosticSeverity.Error).ShouldBeEmpty();
+
+        var code = String.Join("\n", result.GeneratedSources.Select(x => x.SourceText.ToString()));
+        bool Declares(string name) => System.Text.RegularExpressions.Regex.IsMatch(code, $@"\b(class|record|enum) {name}\b");
+
+        // the variant still derives from its base, the sibling and what it reaches stay readable
+        code.ShouldContain("class EventOpened : global::TestApi.Event");
+        Declares("EventClosed").ShouldBeTrue();
+        Declares("CloseReason").ShouldBeTrue();
+        Declares("Order").ShouldBeFalse();
+    }
+
+
+    [Fact(DisplayName = "OpenAPI - every file an operation list keeps is generated exactly as from the whole document")]
+    public void Operation_List_Output_Matches_Whole_Document()
+    {
+        var spec = new MockAdditionalText("/specs/api.yaml", OperationFilterSpec);
+        var list = new MockAdditionalText("/specs/operations.txt", "getOrder\nEventOpened\n");
+        var wholeProps = OperationFilterProps
+            .Where(x => x.Key != "build_metadata.AdditionalFiles.Operations")
+            .ToDictionary(x => x.Key, x => x.Value);
+
+        var filtered = RunGenerator([spec, list], OperationFilterProps, OperationListOptions);
+        var whole = RunGenerator([spec], wholeProps).GeneratedSources.ToDictionary(x => x.HintName, x => x.SourceText.ToString());
+
+        // the client registration and the JSON resolver list what was generated, so they differ by design
+        var compared = filtered.GeneratedSources
+            .Where(x => !x.HintName.StartsWith("__") && !x.HintName.EndsWith("JsonResolver.g.cs"))
+            .ToList();
+        compared.Count.ShouldBeGreaterThan(5);
+
+        foreach (var source in compared)
+        {
+            whole.ShouldContainKey(source.HintName);
+            source.SourceText.ToString().ShouldBe(whole[source.HintName], source.HintName);
+        }
+    }
+
+
+    [Fact(DisplayName = "OpenAPI - a missing operation list fails the build instead of generating everything")]
+    public void Missing_Operation_List_Reports_Error()
+    {
+        var additionalFiles = new AdditionalText[] { new MockAdditionalText("/specs/api.yaml", OperationFilterSpec) };
+
+        var result = RunGenerator(additionalFiles, OperationFilterProps, OperationListOptions);
+
+        result.Diagnostics.ShouldContain(x => x.Id == "SHINYMED010" && x.Severity == DiagnosticSeverity.Error);
+        result.GeneratedSources.ShouldNotContain(x => x.SourceText.ToString().Contains("GetOrderHttpRequest"));
+    }
+
+
+    static GeneratorRunResult RunGenerator(
+        AdditionalText[] additionalFiles,
+        Dictionary<string, string> buildProps,
+        Dictionary<string, Dictionary<string, string>>? perFile = null
+    )
     {
         var syntaxTree = CSharpSyntaxTree.ParseText("""
             namespace Dummy { public class C { } }
@@ -674,7 +964,7 @@ public class OpenApiHttpClientSourceGeneratorTests(ITestOutputHelper output)
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var generator = new OpenApiHttpClientSourceGenerator();
-        var optionsProvider = new MockAnalyzerConfigOptionsProvider(buildProps);
+        var optionsProvider = new MockAnalyzerConfigOptionsProvider(buildProps, perFile);
 
         var driver = CSharpGeneratorDriver.Create(
             generators: [generator.AsSourceGenerator()],

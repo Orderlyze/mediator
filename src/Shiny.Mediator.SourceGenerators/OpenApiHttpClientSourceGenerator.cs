@@ -56,29 +56,19 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             });
 
         // Find all MediatorHttp items in the project
-        var mediatorHttpItems = context.AdditionalTextsProvider
-            .Combine(context.AnalyzerConfigOptionsProvider)
-            .Where(pair =>
-            {
-                var (text, configOptions) = pair;
-                var options = configOptions.GetOptions(text);
-
-                if (!options.TryGetValue("build_metadata.AdditionalFiles.SourceItemGroup", out var value))
-                    return false;
-
-                return value.Equals("MediatorHttp", StringComparison.InvariantCultureIgnoreCase);
-            })
-            .Select((pair, _) => pair.Left)
-            .Collect();
+        var mediatorHttpItems = GetAdditionalTexts(context, "MediatorHttp");
+        // Operation lists named by a MediatorHttp item's Operations metadata (added by SourceGenerators.targets)
+        var operationLists = GetAdditionalTexts(context, "MediatorHttpOperations");
 
         var combined = mediatorHttpItems
             .Combine(rootNamespace)
             .Combine(context.AnalyzerConfigOptionsProvider)
-            .Combine(context.CompilationProvider);
+            .Combine(context.CompilationProvider)
+            .Combine(operationLists);
 
         context.RegisterSourceOutput(combined, (sourceContext, data) =>
         {
-            var (((texts, regProperties), configOptions), compilation) = data;
+            var ((((texts, regProperties), configOptions), compilation), lists) = data;
             var handlers = new List<HandlerRegistrationInfo>();
             
             if (!texts.IsEmpty)
@@ -89,7 +79,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
                     {
                         var config = GetConfig(configOptions, item, regProperties.RootNamespace);
 
-                        var newHandlers = ProcessOpenApiDocument(sourceContext, item, config, configOptions, compilation);
+                        var newHandlers = ProcessOpenApiDocument(sourceContext, item, config, configOptions, compilation, lists);
                         if (newHandlers.Count > 0)
                             handlers.AddRange(newHandlers);
                     }
@@ -124,6 +114,25 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         });
     }
 
+    static IncrementalValueProvider<System.Collections.Immutable.ImmutableArray<AdditionalText>> GetAdditionalTexts(
+        IncrementalGeneratorInitializationContext context,
+        string sourceItemGroup
+    ) => context.AdditionalTextsProvider
+        .Combine(context.AnalyzerConfigOptionsProvider)
+        .Where(pair =>
+        {
+            var (text, configOptions) = pair;
+            var options = configOptions.GetOptions(text);
+
+            if (!options.TryGetValue("build_metadata.AdditionalFiles.SourceItemGroup", out var value))
+                return false;
+
+            return value.Equals(sourceItemGroup, StringComparison.InvariantCultureIgnoreCase);
+        })
+        .Select((pair, _) => pair.Left)
+        .Collect();
+
+
     static MediatorHttpItemConfig GetConfig(
         AnalyzerConfigOptionsProvider configProvider,
         AdditionalText item,
@@ -139,7 +148,8 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             ContractPostfix = GetProperty(options, "ContractPostfix", "HttpRequest"),
             GenerateModelsOnly = GetProperty(options, "GenerateModelsOnly", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? false,
             UseInternalClasses = GetProperty(options, "UseInternalClasses", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiRegistrationUseInternal,
-            GenerateJsonConverters = GetProperty(options, "GenerateJsonConverters", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiGenerateJsonConverters
+            GenerateJsonConverters = GetProperty(options, "GenerateJsonConverters", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiGenerateJsonConverters,
+            Operations = GetProperty(options, "Operations", null)
         };
     }
 
@@ -158,7 +168,8 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         AdditionalText item,
         MediatorHttpItemConfig config,
         AnalyzerConfigOptionsProvider configProvider,
-        Compilation compilation
+        Compilation compilation,
+        System.Collections.Immutable.ImmutableArray<AdditionalText> operationLists
     )
     {
         var handlers = new List<HandlerRegistrationInfo>();
@@ -258,15 +269,23 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
                 return handlers;
             }
 
+            OpenApiOperationFilter? filter = null;
+            if (config.Operations != null)
+            {
+                filter = LoadOperationFilter(context, item, config.Operations, operationLists, document);
+                if (filter == null)
+                    return handlers;
+            }
+
             // Create a single model generator to track generated types across components and contracts
             var modelGenerator = new OpenApiModelGenerator(config, context, compilation);
 
-            // Generate models from components FIRST
-            GenerateComponents(document, modelGenerator);
+            // Generate models from components FIRST (with an operation list only those its operations reach)
+            GenerateComponents(document, modelGenerator, filter?.GetReachableSchemas(document));
 
             // Generate handlers from paths (unless GenerateModelsOnly is true)
             if (!config.GenerateModelsOnly)
-                handlers = GenerateHandlers(context, document, config, modelGenerator);
+                handlers = GenerateHandlers(context, document, config, modelGenerator, filter);
 
             // Emit a custom IJsonTypeInfoResolver that wires every generated per-type JsonConverter
             // via JsonMetadataServices.CreateValueInfo + collection-shape wrappers, plus a
@@ -517,16 +536,74 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         return lastDot < 0 ? namespaceName : namespaceName.Substring(lastDot + 1);
     }
 
-    static void GenerateComponents(
-        OpenApiDocument document,
-        OpenApiModelGenerator modelGenerator
+    static OpenApiOperationFilter? LoadOperationFilter(
+        SourceProductionContext context,
+        AdditionalText item,
+        string operations,
+        System.Collections.Immutable.ImmutableArray<AdditionalText> operationLists,
+        OpenApiDocument document
     )
     {
-        if (document.Components?.Schemas == null)
+        var expected = NormalizePath(operations);
+        if (!expected.StartsWith("/") && expected.IndexOf(':') < 0)
+        {
+            var itemPath = NormalizePath(item.Path);
+            var slash = itemPath.LastIndexOf('/');
+            expected = (slash >= 0 ? itemPath.Substring(0, slash + 1) : "") + expected;
+        }
+
+        var list = operationLists.FirstOrDefault(x => NormalizePath(x.Path).Equals(expected, StringComparison.OrdinalIgnoreCase));
+        var text = list?.GetText(context.CancellationToken);
+        if (text == null)
+        {
+            ReportDiagnostic(
+                context,
+                "SHINYMED010",
+                "OpenAPI Operation List Not Found",
+                $"The operation list '{operations}' of {item.Path} was not found or could not be read",
+                DiagnosticSeverity.Error
+            );
+            return null;
+        }
+
+        var filter = new OpenApiOperationFilter(OpenApiOperationFilter.ParseList(text.ToString()));
+        var unknown = filter.GetUnknown(document);
+        if (unknown.Count > 0)
+        {
+            ReportDiagnostic(
+                context,
+                "SHINYMED011",
+                "Unknown Names in OpenAPI Operation List",
+                $"{unknown.Count} name(s) in '{operations}' are neither an operation nor a schema of {item.Path}: {String.Join(", ", unknown)}",
+                DiagnosticSeverity.Warning
+            );
+        }
+        return filter;
+    }
+
+
+    // forward slashes and no "./" segments, so paths from MSBuild and from metadata compare as strings
+    static string NormalizePath(string path)
+    {
+        var normalized = path.Trim().Replace('\\', '/');
+        while (normalized.StartsWith("./"))
+            normalized = normalized.Substring(2);
+        return normalized.Replace("/./", "/");
+    }
+
+
+    static void GenerateComponents(
+        OpenApiDocument document,
+        OpenApiModelGenerator modelGenerator,
+        IDictionary<string, IOpenApiSchema>? schemas
+    )
+    {
+        schemas ??= document.Components?.Schemas;
+        if (schemas == null)
             return;
 
         var context = modelGenerator.Context;
-        modelGenerator.SetComponents(document.Components.Schemas, message => ReportDiagnostic(
+        modelGenerator.SetComponents(schemas, message => ReportDiagnostic(
             context,
             "SHINYMED009",
             "OpenAPI Polymorphism",
@@ -534,7 +611,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             DiagnosticSeverity.Warning
         ));
 
-        foreach (var schema in document.Components.Schemas)
+        foreach (var schema in schemas)
         {
             modelGenerator.GenerateModel(schema.Key, schema.Value, true);
         }
@@ -545,7 +622,8 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         SourceProductionContext context,
         OpenApiDocument document,
         MediatorHttpItemConfig config,
-        OpenApiModelGenerator modelGenerator
+        OpenApiModelGenerator modelGenerator,
+        OpenApiOperationFilter? filter
     )
     {
         var handlers = new List<HandlerRegistrationInfo>();
@@ -565,6 +643,9 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             {
                 foreach (var operation in path.Value.Operations)
                 {
+                    if (filter != null && !filter.Includes(operation.Value))
+                        continue;
+
                     var handler = GenerateHandlerForOperation(
                         context,
                         path.Key,
