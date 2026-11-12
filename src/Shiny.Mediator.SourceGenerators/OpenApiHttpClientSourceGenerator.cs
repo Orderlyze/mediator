@@ -149,6 +149,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             GenerateModelsOnly = GetProperty(options, "GenerateModelsOnly", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? false,
             UseInternalClasses = GetProperty(options, "UseInternalClasses", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiRegistrationUseInternal,
             GenerateJsonConverters = GetProperty(options, "GenerateJsonConverters", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiGenerateJsonConverters,
+            LenientEnums = GetProperty(options, "LenientEnums", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiLenientEnums,
             Operations = GetProperty(options, "Operations", null)
         };
     }
@@ -370,7 +371,17 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         {
             var typeRef = $"global::{kv.Key}";
 
-            if (kv.Value)
+            if (config.LenientEnums)
+            {
+                // LenientEnums: the enum's {Enum}Json helper, so a body or response reads exactly like a member.
+                // The lenient helper never asks the options, so this entry cannot call back into itself.
+                var helper = $"new HelperEnumConverter<{typeRef}>({typeRef}Json.Read, {typeRef}Json.Write)";
+                sb.AppendLine($"        if (type == typeof({typeRef}))");
+                sb.AppendLine($"            return JsonMetadataServices.CreateValueInfo<{typeRef}>(options, {helper});");
+                sb.AppendLine($"        if (type == typeof({typeRef}?))");
+                sb.AppendLine($"            return JsonMetadataServices.CreateValueInfo<{typeRef}?>(options, new NullableEnumConverter<{typeRef}>({helper}));");
+            }
+            else if (kv.Value)
             {
                 // String enum: materialize the JsonStringEnumConverter<T> factory into the concrete
                 // JsonConverter<T> at resolution time. CreateValueInfo + factories silently produce
@@ -517,6 +528,29 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             sb.AppendLine("            this.inner.Write(writer, value.Value, options);");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
+            if (config.LenientEnums)
+            {
+                sb.AppendLine();
+                sb.AppendLine("    delegate T EnumReader<T>(ref global::System.Text.Json.Utf8JsonReader reader, JsonSerializerOptions options);");
+                sb.AppendLine();
+                sb.AppendLine("    sealed class HelperEnumConverter<T> : global::System.Text.Json.Serialization.JsonConverter<T> where T : struct, System.Enum");
+                sb.AppendLine("    {");
+                sb.AppendLine("        readonly EnumReader<T> read;");
+                sb.AppendLine("        readonly Action<global::System.Text.Json.Utf8JsonWriter, T> write;");
+                sb.AppendLine();
+                sb.AppendLine("        public HelperEnumConverter(EnumReader<T> read, Action<global::System.Text.Json.Utf8JsonWriter, T> write)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            this.read = read;");
+                sb.AppendLine("            this.write = write;");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+                sb.AppendLine("        public override T Read(ref global::System.Text.Json.Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)");
+                sb.AppendLine("            => this.read(ref reader, options);");
+                sb.AppendLine();
+                sb.AppendLine("        public override void Write(global::System.Text.Json.Utf8JsonWriter writer, T value, JsonSerializerOptions options)");
+                sb.AppendLine("            => this.write(writer, value);");
+                sb.AppendLine("    }");
+            }
         }
         sb.AppendLine("}");
         sb.AppendLine();

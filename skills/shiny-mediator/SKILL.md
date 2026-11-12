@@ -25,6 +25,7 @@ triggers:
   - OpenAPI
   - HTTP client
   - MediatorHttp
+  - LenientEnums
   - discriminator
   - polymorphism
   - oneOf
@@ -267,7 +268,11 @@ custom `IJsonTypeInfoResolver` covering every generated model + contract (includ
 `T[]` shapes) plus a `[ModuleInitializer]`. Users don't need `[ShinyJsonContext]` for
 OpenAPI-generated types. Enum members of the models are read and written by the model's converter
 through a static `{Enum}Json` helper per enum: the document's wire values directly, anything else
-through the options' own metadata for the enum (if any), otherwise a `JsonException`. The resolver
+through the options' own metadata for the enum (if any), otherwise a `JsonException`. With
+`LenientEnums="true"` the helper reads other spellings itself instead - any member name in any casing
+(flag combinations included) and, for string enums, the wire names in any casing and any integer -
+through the non-generic `Enum.TryParse(Type, …)`, never asking the options (no reflection; use it for
+an API that sends an enum sometimes as name and sometimes as number). The resolver
 only registers enums that generated code still asks the options for (a request body, a response, or
 a member shape other than `E`, `E?` and `List<E>`), so AOT/ReadyToRun don't compile
 System.Text.Json's generic converter machinery once per enum. Every other member a converter does
@@ -541,6 +546,7 @@ Generate contracts, models, and handlers directly from OpenAPI/Swagger specs. Ad
 | `UseInternalClasses` | Generate internal classes instead of public |
 | `GenerateModelsOnly` | Only generate models, no handlers |
 | `GenerateJsonConverters` | Generate `JsonConverter` implementations for enums |
+| `LenientEnums` | With `GenerateJsonConverters`: enums also read any member name (any casing) and string enums any integer, without reflection |
 
 **Discriminated (polymorphic) schemas** are always supported: a schema with a `discriminator` (either a
 `oneOf`/`anyOf` union as ASP.NET Core emits it, or `allOf: [$ref Base, {...}]` inheritance as NSwag/Swashbuckle

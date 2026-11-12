@@ -388,6 +388,7 @@ Generate strongly-typed mediator contracts and handlers from OpenAPI specs via `
 | `UseInternalClasses` | Generate `internal` classes instead of `public` | `false` |
 | `GenerateModelsOnly` | Only generate model classes, skip handlers | `false` |
 | `GenerateJsonConverters` | Generate `JsonConverter` for string enums | `false` |
+| `LenientEnums` | With `GenerateJsonConverters`: enums also read any member name (any casing) and string enums any integer, without reflection | `false` |
 
 ### What Gets Generated
 - **Models** from `components/schemas` with `[JsonPropertyName]` attributes

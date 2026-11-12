@@ -85,6 +85,13 @@
                       ContractPostfix="HttpRequest"
                       GenerateJsonConverters="true"
                       Visible="false"/>
+        <!--the same enums with LenientEnums: names and numbers read by the helpers themselves (a copy, files are keyed by path)-->
+        <MediatorHttp Include="$(IntermediateOutputPath)lenient\enums.json"
+                      Namespace="LenientEnumsApi"
+                      ContractPostfix="HttpRequest"
+                      GenerateJsonConverters="true"
+                      LenientEnums="true"
+                      Visible="false"/>
         <!--member shapes handed to the options' JsonTypeInfo, read back through the generated resolver alone-->
         <MediatorHttp Include="SourceGeneration\trim-safety.json"
                       Namespace="TrimSafetyApi"
@@ -96,6 +103,9 @@
     <Target Name="CopyPolymorphismFixtures" BeforeTargets="_InjectShinyMediatorAdditionalFiles">
         <Copy SourceFiles="SourceGeneration\polymorphism-union.json;SourceGeneration\polymorphism-inheritance.json"
               DestinationFolder="$(IntermediateOutputPath)polymorphism"
+              SkipUnchangedFiles="true"/>
+        <Copy SourceFiles="SourceGeneration\enums.json"
+              DestinationFolder="$(IntermediateOutputPath)lenient"
               SkipUnchangedFiles="true"/>
     </Target>
 

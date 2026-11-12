@@ -345,6 +345,13 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     /// each). Any other input (another spelling, a number for a string enum) goes to the options'
     /// own metadata for the enum when there is one (reflection, the enum's [JsonConverter], app
     /// converters), and is a <see cref="System.Text.Json.JsonException"/> otherwise.
+    /// <para>
+    /// With <see cref="MediatorHttpItemConfig.LenientEnums"/> the helper reads those other spellings itself:
+    /// any member name in any casing (and flag combinations) through the non-generic
+    /// <see cref="System.Enum.TryParse(System.Type, string, bool, out object)"/>, for string enums also the
+    /// wire names in any casing and any integer. It never asks the options then, so no reflection and no
+    /// resolver entry is involved, and a resolver entry built on this helper cannot call back into itself.
+    /// </para>
     /// </summary>
     void AppendEnumJsonHelper(StringBuilder sb, string enumName, bool isStringEnum, string underlyingType, List<(string Member, string Wire)> wireNames)
     {
@@ -372,23 +379,48 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         sb.AppendLine();
         sb.AppendLine($"    public static {typeRef} Read(ref global::System.Text.Json.Utf8JsonReader reader, global::System.Text.Json.JsonSerializerOptions options)");
         sb.AppendLine("    {");
+        var lenient = config.LenientEnums;
         if (isStringEnum)
         {
             sb.AppendLine("        if (reader.TokenType == global::System.Text.Json.JsonTokenType.String)");
             sb.AppendLine("        {");
             foreach (var (member, wire) in wireNames)
                 sb.AppendLine($"            if (reader.ValueTextEquals(\"{Escape(wire)}\")) return {typeRef}.{member};");
+            if (lenient)
+            {
+                sb.AppendLine();
+                sb.AppendLine("            // LenientEnums: the wire names and member names in any casing");
+                sb.AppendLine("            var text = reader.GetString();");
+                foreach (var (member, wire) in wireNames)
+                    sb.AppendLine($"            if (string.Equals(text, \"{Escape(wire)}\", global::System.StringComparison.OrdinalIgnoreCase)) return {typeRef}.{member};");
+                sb.AppendLine($"            if (global::System.Enum.TryParse(typeof({typeRef}), text, true, out var named)) return ({typeRef})named;");
+            }
             sb.AppendLine("        }");
+            if (lenient)
+            {
+                sb.AppendLine("        // LenientEnums: an integer, as JsonStringEnumConverter reads it");
+                sb.AppendLine("        if (reader.TokenType == global::System.Text.Json.JsonTokenType.Number && reader.TryGetInt32(out var number))");
+                sb.AppendLine($"            return ({typeRef})number;");
+            }
         }
         else
         {
             var tryGet = underlyingType == "long" ? "TryGetInt64" : "TryGetInt32";
             sb.AppendLine($"        if (reader.TokenType == global::System.Text.Json.JsonTokenType.Number && reader.{tryGet}(out var number))");
             sb.AppendLine($"            return ({typeRef})number;");
+            if (lenient)
+            {
+                sb.AppendLine("        // LenientEnums: a member name in any casing, flag combinations included");
+                sb.AppendLine($"        if (reader.TokenType == global::System.Text.Json.JsonTokenType.String && global::System.Enum.TryParse(typeof({typeRef}), reader.GetString(), true, out var named))");
+                sb.AppendLine($"            return ({typeRef})named;");
+            }
         }
         sb.AppendLine();
-        sb.AppendLine($"        if (options.TryGetTypeInfo(typeof({typeRef}), out var typeInfo))");
-        sb.AppendLine($"            return ({typeRef})global::System.Text.Json.JsonSerializer.Deserialize(ref reader, typeInfo);");
+        if (!lenient)
+        {
+            sb.AppendLine($"        if (options.TryGetTypeInfo(typeof({typeRef}), out var typeInfo))");
+            sb.AppendLine($"            return ({typeRef})global::System.Text.Json.JsonSerializer.Deserialize(ref reader, typeInfo);");
+        }
         sb.AppendLine($"        throw new global::System.Text.Json.JsonException(\"The JSON value could not be converted to {config.Namespace}.{enumName}.\");");
         sb.AppendLine("    }");
         sb.AppendLine("}");

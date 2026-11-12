@@ -420,6 +420,7 @@ Generate contracts, models, and handlers from an OpenAPI/Swagger spec by adding 
 | `UseInternalClasses` | Generate `internal` classes instead of `public` | `false` |
 | `GenerateModelsOnly` | Only generate model classes, skip handlers | `false` |
 | `GenerateJsonConverters` | Generate `JsonConverter` for string enums | `false` |
+| `LenientEnums` | With `GenerateJsonConverters`: enums also read any member name (any casing) and string enums any integer, without reflection | `false` |
 
 **The source generator produces:**
 - Model classes from `components/schemas` with `[JsonPropertyName]` attributes

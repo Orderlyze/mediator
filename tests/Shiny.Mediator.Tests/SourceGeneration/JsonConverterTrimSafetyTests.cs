@@ -116,6 +116,37 @@ public class JsonConverterTrimSafetyTests
 
 
     [Fact]
+    public void OpenApi_Lenient_Enum_Helpers_Read_Without_Reflection()
+    {
+        const string path = "./SourceGeneration/enums.json";
+        var dummy = CSharpSyntaxTree.ParseText("namespace Dummy { public class C { } }");
+        var options = new MockAnalyzerConfigOptionsProvider(new Dictionary<string, string>
+        {
+            ["build_metadata.AdditionalFiles.SourceItemGroup"] = "MediatorHttp",
+            ["build_metadata.AdditionalFiles.Namespace"] = "TrimLenientApi",
+            ["build_metadata.AdditionalFiles.GenerateJsonConverters"] = "true",
+            ["build_metadata.AdditionalFiles.LenientEnums"] = "true",
+            ["build_property.RootNamespace"] = "UnitTests",
+            ["build_property.AssemblyName"] = "UnitTests"
+        });
+
+        CSharpGeneratorDriver.Create(
+                generators: [new OpenApiHttpClientSourceGenerator().AsSourceGenerator()],
+                additionalTexts: [new MockAdditionalText(path, File.ReadAllText(path))],
+                parseOptions: (CSharpParseOptions)dummy.Options,
+                optionsProvider: options)
+            .RunGeneratorsAndUpdateCompilation(Compile([dummy]), out var output, out _);
+        var generated = output.SyntaxTrees.Where(x => x != dummy).ToArray();
+
+        Errors(output).ShouldBeEmpty();
+        // the helpers read other spellings through the non-generic Enum API, never through the options' metadata
+        generated.Single(x => x.FilePath.EndsWith("OrderStatus.g.cs")).ToString().ShouldContain("global::System.Enum.TryParse(typeof(");
+        generated.Single(x => x.FilePath.EndsWith("ReturnState.g.cs")).ToString().ShouldNotContain("options.TryGetTypeInfo");
+        CallsRequiringUnreferencedOrDynamicCode(output, generated).ShouldBeEmpty();
+    }
+
+
+    [Fact]
     public void OpenApi_Members_Roundtrip_Through_The_Generated_Resolver_Alone()
     {
         // no reflection fallback: a member type the resolver does not cover throws NotSupportedException;
