@@ -437,6 +437,15 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             sb.AppendLine($"            return CreateList<{element}>(options);");
         }
 
+        // Dictionary<string, V> shapes some generated code reads or writes through the options
+        // (openapi additionalProperties) - the converters ask for them like for every other member
+        var dictionaryValues = modelGenerator.DictionaryValueTypeNames.OrderBy(x => x, StringComparer.Ordinal).ToList();
+        foreach (var value in dictionaryValues)
+        {
+            sb.AppendLine($"        if (type == typeof(global::System.Collections.Generic.Dictionary<string, {value}>))");
+            sb.AppendLine($"            return CreateDictionary<{value}>(options);");
+        }
+
         sb.AppendLine("        return null;");
         sb.AppendLine("    }");
         sb.AppendLine();
@@ -465,6 +474,24 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         sb.AppendLine("            });");
         sb.AppendLine("    }");
         sb.AppendLine();
+        if (dictionaryValues.Count > 0)
+        {
+            sb.AppendLine("    static JsonTypeInfo CreateDictionary<TValue>(JsonSerializerOptions options)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        var key = ResolveElement<string>(options);");
+            sb.AppendLine("        var value = ResolveElement<TValue>(options);");
+            sb.AppendLine("        if (key is null || value is null) return null;");
+            sb.AppendLine("        return JsonMetadataServices.CreateDictionaryInfo<Dictionary<string, TValue>, string, TValue>(");
+            sb.AppendLine("            options,");
+            sb.AppendLine("            new JsonCollectionInfoValues<Dictionary<string, TValue>>");
+            sb.AppendLine("            {");
+            sb.AppendLine("                ObjectCreator = static () => new Dictionary<string, TValue>(),");
+            sb.AppendLine("                KeyInfo = key,");
+            sb.AppendLine("                ElementInfo = value");
+            sb.AppendLine("            });");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+        }
         sb.AppendLine("    static JsonTypeInfo<T> ResolveElement<T>(JsonSerializerOptions options)");
         sb.AppendLine("    {");
         sb.AppendLine("        try { return options.GetTypeInfo(typeof(T)) as JsonTypeInfo<T>; }");
@@ -717,7 +744,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         // Determine response type
         var responseType = GetResponseType(operation, config, modelGenerator, opId);
         // the handler reads the response (and sends the body) through the serializer's options
-        modelGenerator.RequireEnumTypeInfo(responseType);
+        modelGenerator.RequireTypeInfo(responseType);
         
         // Determine HTTP method
         var httpMethod = operationType.ToUpper();
@@ -782,7 +809,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             if (bodyContent.TryGetValue("application/json", out var mediaType) && mediaType?.Schema != null && !IsBinarySchema(mediaType.Schema))
             {
                 var bodyType = ResolveSchemaTypeOrSynthesize(mediaType.Schema, config, modelGenerator, $"{opId}Body");
-                modelGenerator.RequireEnumTypeInfo(bodyType);
+                modelGenerator.RequireTypeInfo(bodyType);
                 properties.Add(new HttpPropertyInfo(
                     "Body",
                     "Body",
@@ -928,7 +955,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
                 }
                 else
                 {
-                    JsonConverterSourceGenerator.GenerateJsonConverter(context, typeSymbol, modelGenerator.GetEnumJsonHelper, modelGenerator.RequireEnumTypeInfo);
+                    JsonConverterSourceGenerator.GenerateJsonConverter(context, typeSymbol, modelGenerator.GetEnumJsonHelper, modelGenerator.RequireTypeInfo);
                     modelGenerator.ConvertedTypeNames.Add(fullyQualifiedTypeName);
                 }
             }

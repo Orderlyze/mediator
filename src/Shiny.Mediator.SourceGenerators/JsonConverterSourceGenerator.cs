@@ -179,7 +179,7 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
     /// enums (E, E? and List&lt;E&gt;) are read and written through the enum's static helper that
     /// <paramref name="enumHelper"/> names for a type (fully qualified, null for no such enum) instead of
     /// the <see cref="System.Text.Json.JsonSerializerOptions"/>. <paramref name="throughOptions"/> gets the
-    /// type of every member that is still handed to <see cref="System.Text.Json.JsonSerializer"/>, so the
+    /// type of every member that is still read and written through the options' JsonTypeInfo, so the
     /// caller can provide metadata for it.
     /// </summary>
     public static void GenerateJsonConverter(SourceProductionContext context, INamedTypeSymbol typeSymbol, Func<string, string?> enumHelper, Action<string> throughOptions)
@@ -458,7 +458,10 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         }
         
         sb.AppendLine("        writer.WriteStartObject();");
-        
+
+        // set once a member is handed to the options' metadata - the converter then gets the
+        // Serialize/Deserialize helpers below
+        var throughMetadata = false;
         foreach (var prop in typeInfo.Properties)
         {
             if (GetEnumMember(prop, enumHelper) is { } enumMember)
@@ -477,33 +480,23 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
             
             var writerMethod = GetWriterMethodForType(prop.TypeName, $"value.{prop.Name}", prop.IsNullable, prop.TypeSymbol);
             if (writerMethod == null)
+            {
                 throughOptions?.Invoke(prop.TypeName);
+                throughMetadata = true;
+                // inferred: the member's own type (an explicit X? would warn in generated code, CS8669)
+                writerMethod = $"Serialize(writer, value.{prop.Name}, options)";
+            }
 
             if (prop.IsNullable && !omitNull)
             {
                 sb.AppendLine($"        if (value.{prop.Name} == null)");
                 sb.AppendLine("            writer.WriteNullValue();");
                 sb.AppendLine("        else");
-                
-                if (writerMethod != null)
-                {
-                    sb.AppendLine($"            {writerMethod};");
-                }
-                else
-                {
-                    sb.AppendLine($"            JsonSerializer.Serialize(writer, value.{prop.Name}, options);");
-                }
+                sb.AppendLine($"            {writerMethod};");
             }
             else
             {
-                if (writerMethod != null)
-                {
-                    sb.AppendLine($"        {writerMethod};");
-                }
-                else
-                {
-                    sb.AppendLine($"        JsonSerializer.Serialize(writer, value.{prop.Name}, options);");
-                }
+                sb.AppendLine($"        {writerMethod};");
             }
             if (omitNull)
                 sb.AppendLine("        }");
@@ -587,17 +580,14 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
 
             var readerMethod = GetReaderMethodForType(prop.TypeName, prop.IsNullable, prop.TypeSymbol);
             if (readerMethod == null)
+            {
                 throughOptions?.Invoke(prop.TypeName);
+                throughMetadata = true;
+                readerMethod = $"Deserialize<{prop.TypeName}>(ref reader, options)";
+            }
 
             sb.AppendLine("                    if (reader.TokenType != JsonTokenType.Null)");
-            if (readerMethod != null)
-            {
-                sb.AppendLine($"                        {targetVariable} = {readerMethod};");
-            }
-            else
-            {
-                sb.AppendLine($"                        {targetVariable} = JsonSerializer.Deserialize<{prop.TypeName}>(ref reader, options);");
-            }
+            sb.AppendLine($"                        {targetVariable} = {readerMethod};");
             sb.AppendLine("                    break;");
         }
 
@@ -627,8 +617,12 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         {
             sb.AppendLine("        return result;");
         }
-        
+
         sb.AppendLine("    }");
+
+        if (throughMetadata)
+            AppendMetadataHelpers(sb);
+
         sb.AppendLine("}");
 
         var ns = String.Empty;
@@ -637,6 +631,26 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         
         context.AddSource($"{ns}{typeInfo.Name}JsonConverter.g.cs", sb.ToString());
     }
+
+    /// <summary>
+    /// Members the converter does not read or write itself (nested models, collections, DateOnly ...)
+    /// go through the <see cref="System.Text.Json.Serialization.Metadata.JsonTypeInfo{T}"/> the options
+    /// resolve. The <see cref="System.Text.Json.JsonSerializerOptions"/> overloads of
+    /// <see cref="System.Text.Json.JsonSerializer"/> carry [RequiresUnreferencedCode] and
+    /// [RequiresDynamicCode] (IL2026/IL3050) because they may fill in a reflection resolver; the
+    /// JsonTypeInfo overloads do not. A converter only runs with options the serializer has already
+    /// locked, so the lookup is the same cached one the options overloads make.
+    /// </summary>
+    static void AppendMetadataHelpers(StringBuilder sb)
+    {
+        sb.AppendLine();
+        sb.AppendLine("    static TValue Deserialize<TValue>(ref Utf8JsonReader reader, JsonSerializerOptions options)");
+        sb.AppendLine("        => JsonSerializer.Deserialize(ref reader, (global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<TValue>)options.GetTypeInfo(typeof(TValue)));");
+        sb.AppendLine();
+        sb.AppendLine("    static void Serialize<TValue>(Utf8JsonWriter writer, TValue value, JsonSerializerOptions options)");
+        sb.AppendLine("        => JsonSerializer.Serialize(writer, value, (global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<TValue>)options.GetTypeInfo(typeof(TValue)));");
+    }
+
 
     static string? GetReaderMethodForType(string typeName, bool isNullable, ITypeSymbol? typeSymbol = null)
     {

@@ -85,6 +85,12 @@
                       ContractPostfix="HttpRequest"
                       GenerateJsonConverters="true"
                       Visible="false"/>
+        <!--member shapes handed to the options' JsonTypeInfo, read back through the generated resolver alone-->
+        <MediatorHttp Include="SourceGeneration\trim-safety.json"
+                      Namespace="TrimSafetyApi"
+                      ContractPostfix="HttpRequest"
+                      GenerateJsonConverters="true"
+                      Visible="false"/>
     </ItemGroup>
 
     <Target Name="CopyPolymorphismFixtures" BeforeTargets="_InjectShinyMediatorAdditionalFiles">

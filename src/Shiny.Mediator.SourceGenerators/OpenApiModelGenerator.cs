@@ -57,14 +57,54 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     public string? GetEnumJsonHelper(string typeName)
         => GetEnumName(typeName) is { } fqn ? $"global::{fqn}Json" : null;
 
-    /// <summary>Marks every generated enum named in <paramref name="typeName"/> (E, E?, List&lt;E&gt;, Dictionary&lt;string, E&gt; …) as reached through the options.</summary>
-    public void RequireEnumTypeInfo(string typeName)
+    /// <summary>
+    /// Records a type that generated code reads or writes through the options (a request body, a
+    /// response, a converter member), so the resolver can provide its metadata: every generated enum
+    /// named in it (E, E?, List&lt;E&gt;, Dictionary&lt;string, E&gt; …) and every
+    /// <c>Dictionary&lt;string, V&gt;</c> shape in it.
+    /// </summary>
+    public void RequireTypeInfo(string typeName)
     {
         foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(typeName, @"(?:global::)?[A-Za-z_][\w.]*"))
         {
             if (GetEnumName(match.Value) is { } fqn)
                 this.enumsNeedingTypeInfo.Add(fqn);
         }
+
+        // every occurrence, so dictionaries nested in lists or dictionaries are found as well
+        for (var start = typeName.IndexOf(DictionaryPrefix, StringComparison.Ordinal); start >= 0; start = typeName.IndexOf(DictionaryPrefix, start + 1, StringComparison.Ordinal))
+        {
+            var valueType = GenericArgument(typeName, start + DictionaryPrefix.Length);
+            this.dictionaryValueTypes.Add(valueType);
+
+            // a list as value (Dictionary<string, List<T>>) needs the list's metadata too
+            if (valueType.StartsWith(ListPrefix, StringComparison.Ordinal) && valueType.EndsWith(">", StringComparison.Ordinal))
+                this.collectionElementTypes.Add(valueType.Substring(ListPrefix.Length, valueType.Length - ListPrefix.Length - 1));
+        }
+    }
+
+    const string DictionaryPrefix = "global::System.Collections.Generic.Dictionary<string, ";
+    const string ListPrefix = "global::System.Collections.Generic.List<";
+
+    // the type argument starting at `start` and running up to the '>' that closes its generic
+    static string GenericArgument(string typeName, int start)
+    {
+        var depth = 0;
+        for (var i = start; i < typeName.Length; i++)
+        {
+            switch (typeName[i])
+            {
+                case '<':
+                    depth++;
+                    break;
+                case '>' when depth == 0:
+                    return typeName.Substring(start, i - start);
+                case '>':
+                    depth--;
+                    break;
+            }
+        }
+        return typeName.Substring(start);
     }
 
     string? GetEnumName(string typeName)
@@ -81,6 +121,13 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     /// </summary>
     public IReadOnlyCollection<string> CollectionElementTypeNames => this.collectionElementTypes;
     readonly HashSet<string> collectionElementTypes = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Value types of every <c>Dictionary&lt;string, V&gt;</c> that generated code reaches through the
+    /// options (see <see cref="RequireTypeInfo"/>), so the resolver can wire the dictionary.
+    /// </summary>
+    public IReadOnlyCollection<string> DictionaryValueTypeNames => this.dictionaryValueTypes;
+    readonly HashSet<string> dictionaryValueTypes = new(StringComparer.Ordinal);
 
     public void UpdateCompilation(Compilation newCompilation) => Compilation = newCompilation;
 
@@ -544,7 +591,7 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
                     var typeSymbol = Compilation.GetTypeByMetadataName(fullyQualifiedTypeName);
                     if (typeSymbol != null)
                     {
-                        JsonConverterSourceGenerator.GenerateJsonConverter(context, typeSymbol, this.GetEnumJsonHelper, this.RequireEnumTypeInfo);
+                        JsonConverterSourceGenerator.GenerateJsonConverter(context, typeSymbol, this.GetEnumJsonHelper, this.RequireTypeInfo);
                         this.convertedTypes.Add(fullyQualifiedTypeName);
                     }
                 }

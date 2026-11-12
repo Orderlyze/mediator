@@ -270,7 +270,11 @@ through a static `{Enum}Json` helper per enum: the document's wire values direct
 through the options' own metadata for the enum (if any), otherwise a `JsonException`. The resolver
 only registers enums that generated code still asks the options for (a request body, a response, or
 a member shape other than `E`, `E?` and `List<E>`), so AOT/ReadyToRun don't compile
-System.Text.Json's generic converter machinery once per enum.
+System.Text.Json's generic converter machinery once per enum. Every other member a converter does
+not write itself (nested models, lists, dates, `Dictionary<string, V>` from `additionalProperties`)
+goes through the `JsonTypeInfo<T>` the options resolve (`options.GetTypeInfo(typeof(T))`), never the
+`JsonSerializerOptions` overloads of `JsonSerializer`, so the generated client has no IL2026/IL3050;
+the resolver provides metadata for each of those member, body and response types on its own.
 
 **Attribute-driven HTTP clients (`[Get]` / `[Post]` / `[Body]`):** user-written types; require
 explicit `[ShinyJsonContext]` registration.
