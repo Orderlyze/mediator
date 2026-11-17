@@ -118,6 +118,18 @@
                       ContractPostfix="HttpRequest"
                       GenerateJsonConverters="true"
                       Visible="false"/>
+        <!--generated requests dispatched by the generated executor (GeneratedHttpRequestExecutorTests)-->
+        <MediatorHttp Include="SourceGeneration\executor.json"
+                      Namespace="ExecutorApi"
+                      ContractPostfix="HttpRequest"
+                      GenerateJsonConverters="true"
+                      Visible="false"/>
+        <!--member, body and response shapes read back through the generated resolver alone (OpenApiResolverCoverageTests)-->
+        <MediatorHttp Include="SourceGeneration\resolver-coverage.json"
+                      Namespace="ResolverCoverageApi"
+                      ContractPostfix="HttpRequest"
+                      GenerateJsonConverters="true"
+                      Visible="false"/>
     </ItemGroup>
 
     <Target Name="CopyPolymorphismFixtures" BeforeTargets="_InjectShinyMediatorAdditionalFiles">

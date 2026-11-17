@@ -298,7 +298,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             // We don't emit a partial JsonSerializerContext + [JsonSerializable] because STJ's own
             // source generator doesn't see partial classes emitted by another generator in the same
             // compilation, so the abstract members of JsonSerializerContext would never be filled in.
-            if (config.GenerateJsonConverters && (modelGenerator.ConvertedTypeNames.Count > 0 || modelGenerator.EnumTypeNames.Count > 0))
+            if (config.GenerateJsonConverters)
                 GenerateJsonResolver(context, config, modelGenerator, handlers);
         }
 
@@ -322,7 +322,10 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         // (FQNs without the "global::" prefix).
         var converted = modelGenerator.ConvertedTypeNames;
         var enums = modelGenerator.EnumTypeNames;
-        if (converted.Count == 0 && enums.Count == 0)
+        if (converted.Count == 0 &&
+            enums.Count == 0 &&
+            modelGenerator.ScalarTypeNames.Count == 0 &&
+            modelGenerator.NullableScalarTypeNames.Count == 0)
             return;
 
         // Sort for deterministic output. Enums only where generated code asks the options for them -
@@ -411,59 +414,56 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             }
         }
 
+        // Scalars and Nullable<T> scalars: generated converters hand every member they do not write
+        // themselves to the options, and responses are read through them. Without reflection nothing
+        // else in the chain is guaranteed to provide them (DateOnly, Guid, ...). A converter the app put on
+        // options.Converters wins over the built-in one, as in STJ's own generated contexts.
+        var hasScalars = modelGenerator.ScalarTypeNames.Count > 0 || modelGenerator.NullableScalarTypeNames.Count > 0;
+        foreach (var scalar in modelGenerator.ScalarTypeNames.OrderBy(x => x, StringComparer.Ordinal))
+        {
+            sb.AppendLine($"        if (type == typeof({scalar}))");
+            sb.AppendLine($"            return CreateScalar<{scalar}>(options, JsonMetadataServices.{OpenApiModelGenerator.ScalarConverter(scalar)});");
+        }
+        foreach (var scalar in modelGenerator.NullableScalarTypeNames.OrderBy(x => x, StringComparer.Ordinal))
+        {
+            sb.AppendLine($"        if (type == typeof({scalar}?))");
+            sb.AppendLine($"            return JsonMetadataServices.CreateValueInfo<{scalar}?>(options, GetCustomConverter<{scalar}?>(options) ?? JsonMetadataServices.GetNullableConverter<{scalar}>(CreateScalar<{scalar}>(options, JsonMetadataServices.{OpenApiModelGenerator.ScalarConverter(scalar)})));");
+        }
+
         // Per-type: collection wrappers (List<T>, T[]) using metadata services factories. Element
         // TypeInfo is looked up via this same resolver — they compose cleanly inside one assembly.
         // UsedCollectionsOnly: only the collections generated code reaches through the options; each
         // entry is a generic instantiation per model in AOT/ReadyToRun code (List<T>, T[], their metadata).
-        var usedLists = config.UsedCollectionsOnly ? new HashSet<string>(modelGenerator.CollectionElementTypeNames.Select(x => QualifiedName(x, config)), StringComparer.Ordinal) : null;
-        var usedArrays = config.UsedCollectionsOnly ? new HashSet<string>(modelGenerator.ArrayElementTypeNames.Select(x => QualifiedName(x, config)), StringComparer.Ordinal) : null;
-        var anyArray = false;
+        var listElements = new HashSet<string>(modelGenerator.ListElementTypeNames.Select(x => QualifiedName(x, config)), StringComparer.Ordinal);
+        var arrayElements = new HashSet<string>(modelGenerator.ArrayElementTypeNames.Select(x => QualifiedName(x, config)), StringComparer.Ordinal);
         foreach (var fqn in ordered)
         {
             var typeRef = $"global::{fqn}";
-            if (usedLists?.Contains(fqn) != false)
+            if (!config.UsedCollectionsOnly || listElements.Contains(fqn))
             {
                 sb.AppendLine($"        if (type == typeof(global::System.Collections.Generic.List<{typeRef}>))");
                 sb.AppendLine($"            return CreateList<{typeRef}>(options);");
             }
-            if (usedArrays?.Contains(fqn) != false)
+            if (!config.UsedCollectionsOnly || arrayElements.Contains(fqn))
             {
-                anyArray = true;
                 sb.AppendLine($"        if (type == typeof({typeRef}[]))");
                 sb.AppendLine($"            return CreateArray<{typeRef}>(options);");
             }
         }
 
-        // Scalars and their Nullable<T> counterparts: generated converters ask the options for
-        // every member type, and the resolver chain carries no reflection fallback.
-        foreach (var scalar in ScalarTypes)
+        // Lists, arrays and Dictionary<string, V> (additionalProperties) of everything else that
+        // reaches the options: scalars, enums, nested collections
+        var modelNames = new HashSet<string>(ordered, StringComparer.Ordinal);
+        foreach (var element in modelGenerator.ListElementTypeNames.Where(x => !modelNames.Contains(QualifiedName(x, config))).OrderBy(x => x, StringComparer.Ordinal))
         {
-            var converter = PrimitiveConverter(scalar)!;
-            sb.AppendLine($"        if (type == typeof({scalar}))");
-            sb.AppendLine($"            return JsonMetadataServices.CreateValueInfo<{scalar}>(options, JsonMetadataServices.{converter});");
-            if (scalar != "string" && scalar != "global::System.Uri")
-            {
-                sb.AppendLine($"        if (type == typeof({scalar}?))");
-                sb.AppendLine($"            return JsonMetadataServices.CreateValueInfo<{scalar}?>(options, JsonMetadataServices.GetNullableConverter<{scalar}>(JsonMetadataServices.CreateValueInfo<{scalar}>(options, JsonMetadataServices.{converter})));");
-            }
-        }
-
-        // Lists of scalars, enums and nested lists (List<List<string>>) - models are covered above.
-        var convertedRefs = new HashSet<string>(ordered.Select(x => $"global::{x}"), StringComparer.Ordinal);
-        var enumRefs = new HashSet<string>(enums.Keys.Select(x => $"global::{x}"), StringComparer.Ordinal);
-        var enumRefsWithInfo = new HashSet<string>(orderedEnums.Select(x => $"global::{x.Key}"), StringComparer.Ordinal);
-        foreach (var element in modelGenerator.CollectionElementTypeNames.OrderBy(x => x, StringComparer.Ordinal))
-        {
-            if (convertedRefs.Contains(element) || convertedRefs.Contains($"global::{config.Namespace}.{element}"))
-                continue;
-            if (enumRefs.Contains(element) && !enumRefsWithInfo.Contains(element))
-                continue;
             sb.AppendLine($"        if (type == typeof(global::System.Collections.Generic.List<{element}>))");
             sb.AppendLine($"            return CreateList<{element}>(options);");
         }
-
-        // Dictionary<string, V> shapes some generated code reads or writes through the options
-        // (openapi additionalProperties) - the converters ask for them like for every other member
+        foreach (var element in modelGenerator.ArrayElementTypeNames.Where(x => !modelNames.Contains(QualifiedName(x, config))).OrderBy(x => x, StringComparer.Ordinal))
+        {
+            sb.AppendLine($"        if (type == typeof({element}[]))");
+            sb.AppendLine($"            return CreateArray<{element}>(options);");
+        }
         var dictionaryValues = modelGenerator.DictionaryValueTypeNames.OrderBy(x => x, StringComparer.Ordinal).ToList();
         foreach (var value in dictionaryValues)
         {
@@ -487,21 +487,18 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         sb.AppendLine("            });");
         sb.AppendLine("    }");
         sb.AppendLine();
-        if (anyArray)
-        {
-            sb.AppendLine("    static JsonTypeInfo CreateArray<T>(JsonSerializerOptions options)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        var elem = ResolveElement<T>(options);");
-            sb.AppendLine("        if (elem is null) return null;");
-            sb.AppendLine("        return JsonMetadataServices.CreateArrayInfo<T>(");
-            sb.AppendLine("            options,");
-            sb.AppendLine("            new JsonCollectionInfoValues<T[]>");
-            sb.AppendLine("            {");
-            sb.AppendLine("                ElementInfo = elem");
-            sb.AppendLine("            });");
-            sb.AppendLine("    }");
-            sb.AppendLine();
-        }
+        sb.AppendLine("    static JsonTypeInfo CreateArray<T>(JsonSerializerOptions options)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var elem = ResolveElement<T>(options);");
+        sb.AppendLine("        if (elem is null) return null;");
+        sb.AppendLine("        return JsonMetadataServices.CreateArrayInfo<T>(");
+        sb.AppendLine("            options,");
+        sb.AppendLine("            new JsonCollectionInfoValues<T[]>");
+        sb.AppendLine("            {");
+        sb.AppendLine("                ElementInfo = elem");
+        sb.AppendLine("            });");
+        sb.AppendLine("    }");
+        sb.AppendLine();
         if (dictionaryValues.Count > 0)
         {
             sb.AppendLine("    static JsonTypeInfo CreateDictionary<TValue>(JsonSerializerOptions options)");
@@ -520,6 +517,26 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             sb.AppendLine("    }");
             sb.AppendLine();
         }
+
+        if (hasScalars)
+        {
+            sb.AppendLine("    static JsonTypeInfo<T> CreateScalar<T>(JsonSerializerOptions options, global::System.Text.Json.Serialization.JsonConverter<T> builtIn)");
+            sb.AppendLine("        => JsonMetadataServices.CreateValueInfo<T>(options, GetCustomConverter<T>(options) ?? builtIn);");
+            sb.AppendLine();
+            sb.AppendLine("    static global::System.Text.Json.Serialization.JsonConverter<T> GetCustomConverter<T>(JsonSerializerOptions options)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        foreach (var converter in options.Converters)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (converter.CanConvert(typeof(T)))");
+            sb.AppendLine("                return converter is global::System.Text.Json.Serialization.JsonConverterFactory factory");
+            sb.AppendLine("                    ? factory.CreateConverter(typeof(T), options) as global::System.Text.Json.Serialization.JsonConverter<T>");
+            sb.AppendLine("                    : converter as global::System.Text.Json.Serialization.JsonConverter<T>;");
+            sb.AppendLine("        }");
+            sb.AppendLine("        return null;");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+        }
+
         sb.AppendLine("    static JsonTypeInfo<T> ResolveElement<T>(JsonSerializerOptions options)");
         sb.AppendLine("    {");
         sb.AppendLine("        try { return options.GetTypeInfo(typeof(T)) as JsonTypeInfo<T>; }");
@@ -588,38 +605,6 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             : typeName.Contains(".") ? typeName : $"{config.Namespace}.{typeName}";
 
 
-    static readonly string[] ScalarTypes =
-    {
-        "bool", "byte", "sbyte", "short", "ushort", "int", "uint", "long", "ulong", "float", "double", "decimal", "string", "char",
-        "global::System.Guid", "global::System.DateTime", "global::System.DateTimeOffset", "global::System.DateOnly",
-        "global::System.TimeOnly", "global::System.TimeSpan", "global::System.Uri"
-    };
-
-    static string? PrimitiveConverter(string type) => type switch
-    {
-        "bool" => "BooleanConverter",
-        "byte" => "ByteConverter",
-        "sbyte" => "SByteConverter",
-        "short" => "Int16Converter",
-        "ushort" => "UInt16Converter",
-        "int" => "Int32Converter",
-        "uint" => "UInt32Converter",
-        "long" => "Int64Converter",
-        "ulong" => "UInt64Converter",
-        "float" => "SingleConverter",
-        "double" => "DoubleConverter",
-        "decimal" => "DecimalConverter",
-        "string" => "StringConverter",
-        "char" => "CharConverter",
-        "global::System.Guid" => "GuidConverter",
-        "global::System.DateTime" => "DateTimeConverter",
-        "global::System.DateTimeOffset" => "DateTimeOffsetConverter",
-        "global::System.DateOnly" => "DateOnlyConverter",
-        "global::System.TimeOnly" => "TimeOnlyConverter",
-        "global::System.TimeSpan" => "TimeSpanConverter",
-        "global::System.Uri" => "UriConverter",
-        _ => null
-    };
 
 
     static string DeriveContextName(string namespaceName)

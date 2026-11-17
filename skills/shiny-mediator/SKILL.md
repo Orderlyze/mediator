@@ -52,6 +52,10 @@ triggers:
   - SetContractKeyProvider
   - IL2075
   - IL2026
+  - IL3050
+  - SHINYMED010
+  - PublishAot
+  - value type contract
   - ShinyJsonInclude
   - SourceGenerateJsonConverter
   - No JsonTypeInfo registered
@@ -256,6 +260,8 @@ carries `[RequiresUnreferencedCode]`, so trimmed and AOT apps get an `IL2026` wa
 - A custom provider: `cfg.SetContractKeyProvider<T>()` replaces the default whether you call it before or after `AddShinyMediator`.
 - `AddDataAnnotations()` is `[RequiresUnreferencedCode]`. For trimmed/AOT apps, prefer FluentValidation or hand-written validation.
 - Native AOT: register handlers with `[MediatorSingleton]`/`[MediatorScoped]` so the generated executor dispatches them. Hand-registered handlers fall back to a `MakeGenericType`-based executor.
+- Native AOT: HTTP/OpenAPI generated handlers come with their own generated executor (registered by their registration method), so no extra setup is needed for them.
+- Native AOT: **don't use value types as a contract or result** (`IRequest<bool>`, `IRequest<SomeEnum>`, `record struct` commands). MS.DI can't close open-generic middleware over a value type under AOT, so the first call throws once any open middleware (performance logging, caching, offline, main thread…) is registered. The generator reports warning `SHINYMED010` when `PublishAot` or `IsAotCompatible` is set. Default to a reference type, e.g. `public record IsOpenResult(bool Value);` with `IRequest<IsOpenResult>`.
 
 **Collections (`List<T>`, `T[]`, `IAsyncEnumerable<T>`, etc.) of a contract type.** Mark the
 element type with `[ShinyJsonInclude]`:
@@ -281,7 +287,8 @@ System.Text.Json's generic converter machinery once per enum. Every other member
 not write itself (nested models, lists, dates, `Dictionary<string, V>` from `additionalProperties`)
 goes through the `JsonTypeInfo<T>` the options resolve (`options.GetTypeInfo(typeof(T))`), never the
 `JsonSerializerOptions` overloads of `JsonSerializer`, so the generated client has no IL2026/IL3050;
-the resolver provides metadata for each of those member, body and response types on its own. By default
+the resolver provides metadata for each of those member, body and response types on its own (scalars such as
+`Guid`, `DateOnly`, `T?` included; converters on `JsonSerializerOptions.Converters` still win for scalars). By default
 it also wires `List<T>` and `T[]` of every model; with `UsedCollectionsOnly="true"` only the collections
 generated code reaches (one generic instantiation per model less in AOT/ReadyToRun output) - code that
 serializes another collection of generated models brings its own `JsonTypeInfo` for it.

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.OpenApi;
 
@@ -57,61 +58,142 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     public string? GetEnumJsonHelper(string typeName)
         => GetEnumName(typeName) is { } fqn ? $"global::{fqn}Json" : null;
 
+    /// <summary>Scalars (string, int, Guid, DateOnly ...) generated code reads or writes through the options.</summary>
+    public IReadOnlyCollection<string> ScalarTypeNames => this.scalars;
+
+    /// <summary>Value-type scalars generated code reads or writes as <c>Nullable&lt;T&gt;</c> through the options.</summary>
+    public IReadOnlyCollection<string> NullableScalarTypeNames => this.nullableScalars;
+
+    /// <summary>Element types of every <c>List&lt;T&gt;</c> generated code reads or writes through the options.</summary>
+    public IReadOnlyCollection<string> ListElementTypeNames => this.listElements;
+
+    /// <summary>Element types of every <c>T[]</c> generated code reads or writes through the options.</summary>
+    public IReadOnlyCollection<string> ArrayElementTypeNames => this.arrayElements;
+
+    /// <summary>Value types of every <c>Dictionary&lt;string, V&gt;</c> (additionalProperties) generated code reads or writes through the options.</summary>
+    public IReadOnlyCollection<string> DictionaryValueTypeNames => this.dictionaryValues;
+
+    readonly HashSet<string> scalars = new(StringComparer.Ordinal);
+    readonly HashSet<string> nullableScalars = new(StringComparer.Ordinal);
+    readonly HashSet<string> listElements = new(StringComparer.Ordinal);
+    readonly HashSet<string> arrayElements = new(StringComparer.Ordinal);
+    readonly HashSet<string> dictionaryValues = new(StringComparer.Ordinal);
+
     /// <summary>
-    /// Records a type that generated code reads or writes through the options (a request body, a
-    /// response, a converter member), so the resolver can provide its metadata: every generated enum
-    /// named in it (E, E?, List&lt;E&gt;, Dictionary&lt;string, E&gt; …), every
-    /// <c>Dictionary&lt;string, V&gt;</c> shape and every <c>List&lt;T&gt;</c> or <c>T[]</c> in it.
+    /// Records a type that generated code reads or writes through the options (a converter member, a
+    /// response), so the resolver can provide its metadata: every scalar, list, array and
+    /// <c>Dictionary&lt;string, V&gt;</c> in it, at any depth. Models and enums are covered on their own.
     /// </summary>
-    public void RequireTypeInfo(string typeName)
+    public void RequireTypeInfo(string typeName) => this.Require(SyntaxFactory.ParseTypeName(typeName));
+
+    /// <summary>Records the type of every property a generated converter of <paramref name="typeSymbol"/> reads or writes.</summary>
+    /// <remarks>
+    /// Not called in this fork: the generated converters report exactly the members they hand to the
+    /// options (<see cref="RequireTypeInfo"/> as their throughOptions callback), so enums and model
+    /// collections the converters write themselves get no resolver entry.
+    /// </remarks>
+    public void RequireMemberTypeInfo(INamedTypeSymbol typeSymbol)
     {
-        // every list and array in it, nested ones included (List<List<T>> needs List<T> as well)
-        for (var start = typeName.IndexOf(ListPrefix, StringComparison.Ordinal); start >= 0; start = typeName.IndexOf(ListPrefix, start + 1, StringComparison.Ordinal))
-            this.collectionElementTypes.Add(GenericArgument(typeName, start + ListPrefix.Length));
-        foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(typeName, @"((?:global::)?[A-Za-z_][\w.]*)\[\]"))
-            this.arrayElementTypes.Add(match.Groups[1].Value);
-
-        foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(typeName, @"(?:global::)?[A-Za-z_][\w.]*"))
+        for (var current = typeSymbol; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
         {
-            if (GetEnumName(match.Value) is { } fqn)
-                this.enumsNeedingTypeInfo.Add(fqn);
-        }
-
-        // every occurrence, so dictionaries nested in lists or dictionaries are found as well
-        for (var start = typeName.IndexOf(DictionaryPrefix, StringComparison.Ordinal); start >= 0; start = typeName.IndexOf(DictionaryPrefix, start + 1, StringComparison.Ordinal))
-        {
-            var valueType = GenericArgument(typeName, start + DictionaryPrefix.Length);
-            this.dictionaryValueTypes.Add(valueType);
-
-            // a list as value (Dictionary<string, List<T>>) needs the list's metadata too
-            if (valueType.StartsWith(ListPrefix, StringComparison.Ordinal) && valueType.EndsWith(">", StringComparison.Ordinal))
-                this.collectionElementTypes.Add(valueType.Substring(ListPrefix.Length, valueType.Length - ListPrefix.Length - 1));
-        }
-    }
-
-    const string DictionaryPrefix = "global::System.Collections.Generic.Dictionary<string, ";
-    const string ListPrefix = "global::System.Collections.Generic.List<";
-
-    // the type argument starting at `start` and running up to the '>' that closes its generic
-    static string GenericArgument(string typeName, int start)
-    {
-        var depth = 0;
-        for (var i = start; i < typeName.Length; i++)
-        {
-            switch (typeName[i])
+            foreach (var property in current.GetMembers().OfType<IPropertySymbol>())
             {
-                case '<':
-                    depth++;
-                    break;
-                case '>' when depth == 0:
-                    return typeName.Substring(start, i - start);
-                case '>':
-                    depth--;
-                    break;
+                if (!property.IsStatic && !property.IsIndexer)
+                    this.RequireTypeInfo(property.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
             }
         }
-        return typeName.Substring(start);
     }
+
+    void Require(TypeSyntax type)
+    {
+        var name = type.ToString();
+        if (ScalarConverter(name) != null)
+        {
+            this.scalars.Add(name);
+            return;
+        }
+        if (GetEnumName(name) is { } enumName)
+        {
+            this.enumsNeedingTypeInfo.Add(enumName);
+            return;
+        }
+
+        switch (type)
+        {
+            case NullableTypeSyntax nullable:
+                var inner = nullable.ElementType.ToString();
+                if (ScalarConverter(inner) == null)
+                    this.Require(nullable.ElementType); // enums (above) and models (on their own)
+                else if (IsReferenceScalar(inner))
+                    this.scalars.Add(inner);
+                else
+                    this.nullableScalars.Add(inner);
+                break;
+
+            case ArrayTypeSyntax array when array.RankSpecifiers.Count == 1:
+                this.arrayElements.Add(array.ElementType.ToString());
+                this.Require(array.ElementType);
+                break;
+
+            default:
+                var generic = type switch
+                {
+                    GenericNameSyntax g => g,
+                    QualifiedNameSyntax { Right: GenericNameSyntax g } => g,
+                    AliasQualifiedNameSyntax { Name: GenericNameSyntax g } => g,
+                    _ => null
+                };
+                if (generic == null)
+                    break;
+
+                var args = generic.TypeArgumentList.Arguments;
+                if (args.Count == 1 && name.StartsWith(ListPrefix, StringComparison.Ordinal))
+                {
+                    this.listElements.Add(args[0].ToString());
+                    this.Require(args[0]);
+                }
+                else if (args.Count == 2 && name.StartsWith(DictionaryPrefix, StringComparison.Ordinal) && args[0].ToString() == "string")
+                {
+                    this.scalars.Add("string"); // the dictionary's key metadata
+                    this.dictionaryValues.Add(args[1].ToString());
+                    this.Require(args[1]);
+                }
+                break;
+        }
+    }
+
+    const string ListPrefix = "global::System.Collections.Generic.List<";
+    const string DictionaryPrefix = "global::System.Collections.Generic.Dictionary<";
+
+    static bool IsReferenceScalar(string type) => type is "string" or "global::System.Uri" or "byte[]";
+
+    /// <summary>The <c>JsonMetadataServices</c> converter property for a scalar, null for anything else.</summary>
+    public static string? ScalarConverter(string type) => type switch
+    {
+        "bool" => "BooleanConverter",
+        "byte" => "ByteConverter",
+        "sbyte" => "SByteConverter",
+        "short" => "Int16Converter",
+        "ushort" => "UInt16Converter",
+        "int" => "Int32Converter",
+        "uint" => "UInt32Converter",
+        "long" => "Int64Converter",
+        "ulong" => "UInt64Converter",
+        "float" => "SingleConverter",
+        "double" => "DoubleConverter",
+        "decimal" => "DecimalConverter",
+        "char" => "CharConverter",
+        "string" => "StringConverter",
+        "byte[]" => "ByteArrayConverter",
+        "global::System.Guid" => "GuidConverter",
+        "global::System.DateTime" => "DateTimeConverter",
+        "global::System.DateTimeOffset" => "DateTimeOffsetConverter",
+        "global::System.DateOnly" => "DateOnlyConverter",
+        "global::System.TimeOnly" => "TimeOnlyConverter",
+        "global::System.TimeSpan" => "TimeSpanConverter",
+        "global::System.Uri" => "UriConverter",
+        _ => null
+    };
 
     string? GetEnumName(string typeName)
     {
@@ -120,26 +202,6 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
             : typeName.Contains(".") ? typeName : $"{config.Namespace}.{typeName}";
         return this.enumTypes.ContainsKey(fqn) ? fqn : null;
     }
-
-    /// <summary>
-    /// Element types of every generated <c>List&lt;T&gt;</c> (scalars, nested lists, models) so the
-    /// resolver can wire collections that are not a generated model's own list.
-    /// </summary>
-    public IReadOnlyCollection<string> CollectionElementTypeNames => this.collectionElementTypes;
-    readonly HashSet<string> collectionElementTypes = new(StringComparer.Ordinal);
-
-    /// <summary>
-    /// Element types of every <c>T[]</c> that generated code reaches through the options (see <see cref="RequireTypeInfo"/>).
-    /// </summary>
-    public IReadOnlyCollection<string> ArrayElementTypeNames => this.arrayElementTypes;
-    readonly HashSet<string> arrayElementTypes = new(StringComparer.Ordinal);
-
-    /// <summary>
-    /// Value types of every <c>Dictionary&lt;string, V&gt;</c> that generated code reaches through the
-    /// options (see <see cref="RequireTypeInfo"/>), so the resolver can wire the dictionary.
-    /// </summary>
-    public IReadOnlyCollection<string> DictionaryValueTypeNames => this.dictionaryValueTypes;
-    readonly HashSet<string> dictionaryValueTypes = new(StringComparer.Ordinal);
 
     public void UpdateCompilation(Compilation newCompilation) => Compilation = newCompilation;
 
@@ -844,10 +906,7 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
             {
                 var listType = GetSchemaType(schema.Items);
                 if (listType != null)
-                {
-                    this.collectionElementTypes.Add(listType);
                     type = $"global::System.Collections.Generic.List<{listType}>";
-                }
             }
             else if (schema.Type.Value.HasFlag(JsonSchemaType.String))
             {
