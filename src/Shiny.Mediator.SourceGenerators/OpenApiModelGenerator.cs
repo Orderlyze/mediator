@@ -60,11 +60,17 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     /// <summary>
     /// Records a type that generated code reads or writes through the options (a request body, a
     /// response, a converter member), so the resolver can provide its metadata: every generated enum
-    /// named in it (E, E?, List&lt;E&gt;, Dictionary&lt;string, E&gt; …) and every
-    /// <c>Dictionary&lt;string, V&gt;</c> shape in it.
+    /// named in it (E, E?, List&lt;E&gt;, Dictionary&lt;string, E&gt; …), every
+    /// <c>Dictionary&lt;string, V&gt;</c> shape and every <c>List&lt;T&gt;</c> or <c>T[]</c> in it.
     /// </summary>
     public void RequireTypeInfo(string typeName)
     {
+        // every list and array in it, nested ones included (List<List<T>> needs List<T> as well)
+        for (var start = typeName.IndexOf(ListPrefix, StringComparison.Ordinal); start >= 0; start = typeName.IndexOf(ListPrefix, start + 1, StringComparison.Ordinal))
+            this.collectionElementTypes.Add(GenericArgument(typeName, start + ListPrefix.Length));
+        foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(typeName, @"((?:global::)?[A-Za-z_][\w.]*)\[\]"))
+            this.arrayElementTypes.Add(match.Groups[1].Value);
+
         foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(typeName, @"(?:global::)?[A-Za-z_][\w.]*"))
         {
             if (GetEnumName(match.Value) is { } fqn)
@@ -121,6 +127,12 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     /// </summary>
     public IReadOnlyCollection<string> CollectionElementTypeNames => this.collectionElementTypes;
     readonly HashSet<string> collectionElementTypes = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Element types of every <c>T[]</c> that generated code reaches through the options (see <see cref="RequireTypeInfo"/>).
+    /// </summary>
+    public IReadOnlyCollection<string> ArrayElementTypeNames => this.arrayElementTypes;
+    readonly HashSet<string> arrayElementTypes = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Value types of every <c>Dictionary&lt;string, V&gt;</c> that generated code reaches through the

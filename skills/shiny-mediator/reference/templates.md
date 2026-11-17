@@ -421,6 +421,7 @@ Generate contracts, models, and handlers from an OpenAPI/Swagger spec by adding 
 | `GenerateModelsOnly` | Only generate model classes, skip handlers | `false` |
 | `GenerateJsonConverters` | Generate `JsonConverter` for string enums | `false` |
 | `LenientEnums` | With `GenerateJsonConverters`: enums also read any member name (any casing) and string enums any integer, without reflection | `false` |
+| `UsedCollectionsOnly` | With `GenerateJsonConverters`: the resolver wires `List<T>`/`T[]` of a model only where generated code reaches it (member, body, response) - smaller AOT/ReadyToRun output; other model collections need their own type info | `false` |
 
 **The source generator produces:**
 - Model classes from `components/schemas` with `[JsonPropertyName]` attributes

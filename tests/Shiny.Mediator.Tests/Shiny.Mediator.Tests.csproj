@@ -92,6 +92,18 @@
                       GenerateJsonConverters="true"
                       LenientEnums="true"
                       Visible="false"/>
+        <!--UsedCollectionsOnly: List<T>/T[] of a model only where generated code reaches them (a copy wires the default)-->
+        <MediatorHttp Include="SourceGeneration\used-collections.json"
+                      Namespace="UsedCollectionsApi"
+                      ContractPostfix="HttpRequest"
+                      GenerateJsonConverters="true"
+                      UsedCollectionsOnly="true"
+                      Visible="false"/>
+        <MediatorHttp Include="$(IntermediateOutputPath)all-collections\used-collections.json"
+                      Namespace="AllCollectionsApi"
+                      ContractPostfix="HttpRequest"
+                      GenerateJsonConverters="true"
+                      Visible="false"/>
         <!--member shapes handed to the options' JsonTypeInfo, read back through the generated resolver alone-->
         <MediatorHttp Include="SourceGeneration\trim-safety.json"
                       Namespace="TrimSafetyApi"
@@ -106,6 +118,9 @@
               SkipUnchangedFiles="true"/>
         <Copy SourceFiles="SourceGeneration\enums.json"
               DestinationFolder="$(IntermediateOutputPath)lenient"
+              SkipUnchangedFiles="true"/>
+        <Copy SourceFiles="SourceGeneration\used-collections.json"
+              DestinationFolder="$(IntermediateOutputPath)all-collections"
               SkipUnchangedFiles="true"/>
     </Target>
 

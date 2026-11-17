@@ -1,0 +1,74 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Used collections",
+    "description": "Each way a model collection reaches the options: member, nested member, dictionary value, response, request body - and models that never sit in one.",
+    "version": "1.0"
+  },
+  "paths": {
+    "/orders/{id}": {
+      "get": {
+        "operationId": "getOrder",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } }
+          }
+        }
+      }
+    },
+    "/pets": {
+      "get": {
+        "operationId": "listPets",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Pet" } } } }
+          }
+        }
+      }
+    },
+    "/batches": {
+      "post": {
+        "operationId": "sendBatches",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Batch" } } } }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Receipt" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrderItem" } },
+          "grid": { "type": "array", "items": { "type": "array", "items": { "$ref": "#/components/schemas/Cell" } } },
+          "tagsByGroup": {
+            "type": "object",
+            "additionalProperties": { "type": "array", "items": { "$ref": "#/components/schemas/Tag" } }
+          },
+          "labels": { "type": "array", "items": { "type": "string" } },
+          "customer": { "$ref": "#/components/schemas/Customer" }
+        }
+      },
+      "OrderItem": { "type": "object", "properties": { "name": { "type": "string" } } },
+      "Cell": { "type": "object", "properties": { "value": { "type": "integer", "format": "int32" } } },
+      "Tag": { "type": "object", "properties": { "name": { "type": "string" } } },
+      "Customer": { "type": "object", "properties": { "name": { "type": "string" } } },
+      "Pet": { "type": "object", "properties": { "name": { "type": "string" } } },
+      "Batch": { "type": "object", "properties": { "size": { "type": "integer", "format": "int32" } } },
+      "Receipt": { "type": "object", "properties": { "count": { "type": "integer", "format": "int32" } } }
+    }
+  }
+}

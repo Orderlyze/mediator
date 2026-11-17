@@ -17,6 +17,14 @@ public class MediatorHttpItemConfig
     public bool LenientEnums { get; set; }
 
     /// <summary>
+    /// With <see cref="GenerateJsonConverters"/>: the generated resolver wires <c>List&lt;T&gt;</c> and <c>T[]</c> of a model only
+    /// where generated code reads or writes that collection through the options (a model member, a request body, a response).
+    /// Without it every model gets both, which costs a generic instantiation per model in AOT/ReadyToRun code even if
+    /// nothing ever asks for it. Code outside the generator that serializes another model collection brings its own type info.
+    /// </summary>
+    public bool UsedCollectionsOnly { get; set; }
+
+    /// <summary>
     /// Path of an operation list (one operationId or component schema name per line, relative to the OpenAPI file): only
     /// these operations, these schemas and the schemas they reach are generated. Null generates the whole document.
     /// </summary>

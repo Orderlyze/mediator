@@ -26,6 +26,7 @@ triggers:
   - HTTP client
   - MediatorHttp
   - LenientEnums
+  - UsedCollectionsOnly
   - discriminator
   - polymorphism
   - oneOf
@@ -279,7 +280,10 @@ System.Text.Json's generic converter machinery once per enum. Every other member
 not write itself (nested models, lists, dates, `Dictionary<string, V>` from `additionalProperties`)
 goes through the `JsonTypeInfo<T>` the options resolve (`options.GetTypeInfo(typeof(T))`), never the
 `JsonSerializerOptions` overloads of `JsonSerializer`, so the generated client has no IL2026/IL3050;
-the resolver provides metadata for each of those member, body and response types on its own.
+the resolver provides metadata for each of those member, body and response types on its own. By default
+it also wires `List<T>` and `T[]` of every model; with `UsedCollectionsOnly="true"` only the collections
+generated code reaches (one generic instantiation per model less in AOT/ReadyToRun output) - code that
+serializes another collection of generated models brings its own `JsonTypeInfo` for it.
 
 **Attribute-driven HTTP clients (`[Get]` / `[Post]` / `[Body]`):** user-written types; require
 explicit `[ShinyJsonContext]` registration.
@@ -547,6 +551,7 @@ Generate contracts, models, and handlers directly from OpenAPI/Swagger specs. Ad
 | `GenerateModelsOnly` | Only generate models, no handlers |
 | `GenerateJsonConverters` | Generate `JsonConverter` implementations for enums |
 | `LenientEnums` | With `GenerateJsonConverters`: enums also read any member name (any casing) and string enums any integer, without reflection |
+| `UsedCollectionsOnly` | With `GenerateJsonConverters`: the resolver wires `List<T>`/`T[]` of a model only where generated code reaches it (member, body, response) - smaller AOT/ReadyToRun output; other model collections need their own type info |
 
 **Discriminated (polymorphic) schemas** are always supported: a schema with a `discriminator` (either a
 `oneOf`/`anyOf` union as ASP.NET Core emits it, or `allOf: [$ref Base, {...}]` inheritance as NSwag/Swashbuckle

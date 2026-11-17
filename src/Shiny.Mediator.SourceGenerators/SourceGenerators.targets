@@ -60,6 +60,7 @@
         <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="GenerateModelsOnly" Visible="false"/>
         <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="GenerateJsonConverters" Visible="false"/>
         <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="LenientEnums" Visible="false"/>
+        <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="UsedCollectionsOnly" Visible="false"/>
         <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="ContractPrefix" Visible="false"/>
         <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="ContractPostfix" Visible="false"/>
         <!-- operation list: one operationId or schema name per line, path relative to the OpenAPI file; only those are generated -->
@@ -75,6 +76,7 @@
                              GenerateModelsOnly="%(MediatorHttp.GenerateModelsOnly)"
                              GenerateJsonConverters="%(MediatorHttp.GenerateJsonConverters)"
                              LenientEnums="%(MediatorHttp.LenientEnums)"
+                             UsedCollectionsOnly="%(MediatorHttp.UsedCollectionsOnly)"
                              ContractPrefix="%(MediatorHttp.ContractPrefix)"
                              ContractPostfix="%(MediatorHttp.ContractPostfix)"
                              Operations="%(MediatorHttp.Operations)"
