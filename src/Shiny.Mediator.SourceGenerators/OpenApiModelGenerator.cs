@@ -127,7 +127,12 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
                 else if (IsReferenceScalar(inner))
                     this.scalars.Add(inner);
                 else
+                {
+                    // System.Text.Json configures T? by asking the options for T (JsonTypeInfo.Configure), so a scalar the
+                    // generated code only reaches as T? still needs T in the resolver.
                     this.nullableScalars.Add(inner);
+                    this.scalars.Add(inner);
+                }
                 break;
 
             case ArrayTypeSyntax array when array.RankSpecifiers.Count == 1:

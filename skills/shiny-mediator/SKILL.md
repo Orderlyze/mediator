@@ -288,7 +288,8 @@ not write itself (nested models, lists, dates, `Dictionary<string, V>` from `add
 goes through the `JsonTypeInfo<T>` the options resolve (`options.GetTypeInfo(typeof(T))`), never the
 `JsonSerializerOptions` overloads of `JsonSerializer`, so the generated client has no IL2026/IL3050;
 the resolver provides metadata for each of those member, body and response types on its own (scalars such as
-`Guid`, `DateOnly`, `T?` included; converters on `JsonSerializerOptions.Converters` still win for scalars). By default
+`Guid`, `DateOnly`, `T?` included - a `T?` always brings `T`, since System.Text.Json configures `T?` by asking the
+options for `T`; converters on `JsonSerializerOptions.Converters` still win for scalars). By default
 it also wires `List<T>` and `T[]` of every model; with `UsedCollectionsOnly="true"` only the collections
 generated code reaches (one generic instantiation per model less in AOT/ReadyToRun output) - code that
 serializes another collection of generated models brings its own `JsonTypeInfo` for it.

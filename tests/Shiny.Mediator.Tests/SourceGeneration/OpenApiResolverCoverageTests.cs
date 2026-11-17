@@ -51,6 +51,22 @@ public class OpenApiResolverCoverageTests
 
 
     [Fact]
+    public void A_Scalar_Reached_Only_As_Nullable_Roundtrips()
+    {
+        // Payment.heldFor is the only TimeSpan in the document, and it is nullable: System.Text.Json configures
+        // TimeSpan? by asking the options for TimeSpan, so the resolver needs both
+        var options = Options();
+        var payment = new ResolverCoverageApi.Payment { At = DateTimeOffset.UnixEpoch, HeldFor = TimeSpan.FromSeconds(90) };
+
+        var json = JsonSerializer.Serialize(payment, Info<ResolverCoverageApi.Payment>(options));
+        json.ShouldContain("\"heldFor\":\"00:01:30\"");
+
+        JsonSerializer.Deserialize(json, Info<ResolverCoverageApi.Payment>(options))!.HeldFor.ShouldBe(TimeSpan.FromSeconds(90));
+        options.TryGetTypeInfo(typeof(TimeSpan), out _).ShouldBeTrue();
+    }
+
+
+    [Fact]
     public void An_AdditionalProperties_Response_Comes_From_The_Generated_Resolver()
     {
         // the createOrder response: an additionalProperties object at the top level
