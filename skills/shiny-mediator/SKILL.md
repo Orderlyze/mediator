@@ -27,6 +27,7 @@ triggers:
   - MediatorHttp
   - LenientEnums
   - UsedCollectionsOnly
+  - OmitEnumConverterAttributes
   - discriminator
   - polymorphism
   - oneOf
@@ -552,6 +553,7 @@ Generate contracts, models, and handlers directly from OpenAPI/Swagger specs. Ad
 | `GenerateJsonConverters` | Generate `JsonConverter` implementations for enums |
 | `LenientEnums` | With `GenerateJsonConverters`: enums also read any member name (any casing) and string enums any integer, without reflection |
 | `UsedCollectionsOnly` | With `GenerateJsonConverters`: the resolver wires `List<T>`/`T[]` of a model only where generated code reaches it (member, body, response) - smaller AOT/ReadyToRun output; other model collections need their own type info |
+| `OmitEnumConverterAttributes` | With `GenerateJsonConverters`: generated enums carry no `[JsonConverter(JsonStringEnumConverter<E>/JsonNumberEnumConverter<E>)]` - the generated converters and resolver don't need it, NativeAOT would keep a converter per enum; reflection or own source-generated contexts then write string enums as numbers |
 
 **Discriminated (polymorphic) schemas** are always supported: a schema with a `discriminator` (either a
 `oneOf`/`anyOf` union as ASP.NET Core emits it, or `allOf: [$ref Base, {...}]` inheritance as NSwag/Swashbuckle

@@ -151,6 +151,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             GenerateJsonConverters = GetProperty(options, "GenerateJsonConverters", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiGenerateJsonConverters,
             LenientEnums = GetProperty(options, "LenientEnums", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiLenientEnums,
             UsedCollectionsOnly = GetProperty(options, "UsedCollectionsOnly", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiUsedCollectionsOnly,
+            OmitEnumConverterAttributes = GetProperty(options, "OmitEnumConverterAttributes", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiOmitEnumConverterAttributes,
             Operations = GetProperty(options, "Operations", null)
         };
     }

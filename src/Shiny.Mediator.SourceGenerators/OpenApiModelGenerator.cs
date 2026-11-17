@@ -260,16 +260,21 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         var wireNames = new List<(string Member, string Wire)>();
         var underlyingType = "int";
 
+        // OmitEnumConverterAttributes: the generated converters and the resolver don't need the attribute, and NativeAOT
+        // would keep its converter - System.Text.Json's generic machinery - for every enum
+        var withAttribute = !(config.OmitEnumConverterAttributes && config.GenerateJsonConverters);
         if (isStringEnum)
         {
-            sb.AppendLine($"[global::System.Text.Json.Serialization.JsonConverter(typeof(global::System.Text.Json.Serialization.JsonStringEnumConverter<global::{config.Namespace}.{enumName}>))]");
+            if (withAttribute)
+                sb.AppendLine($"[global::System.Text.Json.Serialization.JsonConverter(typeof(global::System.Text.Json.Serialization.JsonStringEnumConverter<global::{config.Namespace}.{enumName}>))]");
         }
         else
         {
             // Numeric enums travel as numbers on the wire. The attribute keeps every consumer
             // honest — the generated per-type converters, the resolver and reflection fallback —
             // instead of the string-by-default handling used for hand-written contracts.
-            sb.AppendLine($"[global::System.Text.Json.Serialization.JsonConverter(typeof(global::System.Text.Json.Serialization.JsonNumberEnumConverter<global::{config.Namespace}.{enumName}>))]");
+            if (withAttribute)
+                sb.AppendLine($"[global::System.Text.Json.Serialization.JsonConverter(typeof(global::System.Text.Json.Serialization.JsonNumberEnumConverter<global::{config.Namespace}.{enumName}>))]");
             if (GetExtensionBoolean(schema, "x-enumFlags"))
                 sb.AppendLine("[global::System.Flags]");
         }

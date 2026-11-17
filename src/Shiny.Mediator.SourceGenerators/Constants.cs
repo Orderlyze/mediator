@@ -27,6 +27,7 @@ public static class Constants
     public const bool DefaultOpenApiGenerateJsonConverters = false;
     public const bool DefaultOpenApiLenientEnums = false;
     public const bool DefaultOpenApiUsedCollectionsOnly = false;
+    public const bool DefaultOpenApiOmitEnumConverterAttributes = false;
     public const string DefaultOpenApiRegistrationClassName = "__ShinyMediatorOpenApiClient";
     public const string DefaultOpenApiRegistrationMethodName = "AddGeneratedOpenApiClient";
 }

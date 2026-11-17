@@ -92,6 +92,14 @@
                       GenerateJsonConverters="true"
                       LenientEnums="true"
                       Visible="false"/>
+        <!--the lenient enums once more without their [JsonConverter] attributes: only the helpers and the resolver read them-->
+        <MediatorHttp Include="$(IntermediateOutputPath)plain\enums.json"
+                      Namespace="PlainEnumsApi"
+                      ContractPostfix="HttpRequest"
+                      GenerateJsonConverters="true"
+                      LenientEnums="true"
+                      OmitEnumConverterAttributes="true"
+                      Visible="false"/>
         <!--UsedCollectionsOnly: List<T>/T[] of a model only where generated code reaches them (a copy wires the default)-->
         <MediatorHttp Include="SourceGeneration\used-collections.json"
                       Namespace="UsedCollectionsApi"
@@ -118,6 +126,9 @@
               SkipUnchangedFiles="true"/>
         <Copy SourceFiles="SourceGeneration\enums.json"
               DestinationFolder="$(IntermediateOutputPath)lenient"
+              SkipUnchangedFiles="true"/>
+        <Copy SourceFiles="SourceGeneration\enums.json"
+              DestinationFolder="$(IntermediateOutputPath)plain"
               SkipUnchangedFiles="true"/>
         <Copy SourceFiles="SourceGeneration\used-collections.json"
               DestinationFolder="$(IntermediateOutputPath)all-collections"

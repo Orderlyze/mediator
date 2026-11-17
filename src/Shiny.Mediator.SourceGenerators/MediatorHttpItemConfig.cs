@@ -25,6 +25,15 @@ public class MediatorHttpItemConfig
     public bool UsedCollectionsOnly { get; set; }
 
     /// <summary>
+    /// With <see cref="GenerateJsonConverters"/>: generated enums carry no <c>[JsonConverter(typeof(JsonStringEnumConverter&lt;E&gt;))]</c>
+    /// / <c>JsonNumberEnumConverter&lt;E&gt;</c>. The generated converters read and write enums through their <c>{Enum}Json</c> helpers and
+    /// the resolver wires its own converter for the enums it registers, so neither needs the attribute; NativeAOT, however, keeps the
+    /// attribute's converter (System.Text.Json's whole generic machinery) for every enum, asked for or not. Without the attribute,
+    /// reflection-based System.Text.Json and source-generated contexts outside the generator write a string enum as its number.
+    /// </summary>
+    public bool OmitEnumConverterAttributes { get; set; }
+
+    /// <summary>
     /// Path of an operation list (one operationId or component schema name per line, relative to the OpenAPI file): only
     /// these operations, these schemas and the schemas they reach are generated. Null generates the whole document.
     /// </summary>
