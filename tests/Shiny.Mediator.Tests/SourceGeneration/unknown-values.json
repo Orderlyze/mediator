@@ -1,0 +1,92 @@
+{
+  "openapi": "3.1.1",
+  "info": { "title": "Unknown Values API", "version": "1.0.0" },
+  "paths": {
+    "/stock/{productId}": {
+      "get": {
+        "operationId": "getStockItem",
+        "parameters": [
+          { "name": "productId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StockItemData" } } }
+          }
+        }
+      }
+    },
+    "/stock/{productId}/basis": {
+      "get": {
+        "operationId": "getValuationBasis",
+        "parameters": [
+          { "name": "productId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValuationBasis" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ValuationBasis": {
+        "type": "string",
+        "enum": [ "none", "receipt", "purchasePrice" ]
+      },
+      "StockKind": {
+        "type": "integer",
+        "enum": [ 1, 2 ],
+        "x-enumNames": [ "Product", "Extra" ]
+      },
+      "ItemSource": {
+        "required": [ "kind" ],
+        "type": "object",
+        "anyOf": [
+          { "$ref": "#/components/schemas/ItemSourceCatalog" },
+          { "$ref": "#/components/schemas/ItemSourceCustom" }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "catalogItem": "#/components/schemas/ItemSourceCatalog",
+            "customSupply": "#/components/schemas/ItemSourceCustom"
+          }
+        },
+        "properties": {
+          "kind": { "type": "string" }
+        }
+      },
+      "ItemSourceCatalog": {
+        "required": [ "kind", "productId" ],
+        "properties": {
+          "kind": { "enum": [ "catalogItem" ], "type": "string" },
+          "productId": { "type": "string", "format": "uuid" }
+        }
+      },
+      "ItemSourceCustom": {
+        "required": [ "kind" ],
+        "properties": {
+          "kind": { "enum": [ "customSupply" ], "type": "string" },
+          "name": { "type": "string" }
+        }
+      },
+      "StockItemData": {
+        "type": "object",
+        "required": [ "productName", "valuationBasis" ],
+        "properties": {
+          "productName": { "type": "string" },
+          "valuationBasis": { "$ref": "#/components/schemas/ValuationBasis" },
+          "previousBasis": { "oneOf": [ { "type": "null" }, { "$ref": "#/components/schemas/ValuationBasis" } ] },
+          "bases": { "type": "array", "items": { "$ref": "#/components/schemas/ValuationBasis" } },
+          "kind": { "$ref": "#/components/schemas/StockKind" },
+          "source": { "$ref": "#/components/schemas/ItemSource" },
+          "sources": { "type": "array", "items": { "$ref": "#/components/schemas/ItemSource" } }
+        }
+      }
+    }
+  }
+}

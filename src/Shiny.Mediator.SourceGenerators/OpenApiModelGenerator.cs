@@ -436,6 +436,10 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
     /// wire names in any casing and any integer. It never asks the options then, so no reflection and no
     /// resolver entry is involved, and a resolver entry built on this helper cannot call back into itself.
     /// </para>
+    /// <para>
+    /// With <see cref="MediatorHttpItemConfig.IgnoreUnknownValues"/> the helper reads through <c>TryRead</c> instead, see
+    /// <see cref="AppendTolerantEnumRead"/>.
+    /// </para>
     /// </summary>
     void AppendEnumJsonHelper(StringBuilder sb, string enumName, bool isStringEnum, string underlyingType, List<(string Member, string Wire)> wireNames)
     {
@@ -461,6 +465,12 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         sb.AppendLine($"        writer.WriteNumberValue(({underlyingType})value);");
         sb.AppendLine("    }");
         sb.AppendLine();
+        if (config.IgnoreUnknownValues)
+        {
+            AppendTolerantEnumRead(sb, enumName, isStringEnum, underlyingType, wireNames);
+            sb.AppendLine("}");
+            return;
+        }
         sb.AppendLine($"    public static {typeRef} Read(ref global::System.Text.Json.Utf8JsonReader reader, global::System.Text.Json.JsonSerializerOptions options)");
         sb.AppendLine("    {");
         var lenient = config.LenientEnums;
@@ -508,6 +518,75 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         sb.AppendLine($"        throw new global::System.Text.Json.JsonException(\"The JSON value could not be converted to {config.Namespace}.{enumName}.\");");
         sb.AppendLine("    }");
         sb.AppendLine("}");
+    }
+
+
+    /// <summary>
+    /// The reading half of the <c>{Enum}Json</c> helper with <see cref="MediatorHttpItemConfig.IgnoreUnknownValues"/>.
+    /// <c>TryRead</c> reads the declared wire values (with <see cref="MediatorHttpItemConfig.LenientEnums"/> also the other
+    /// spellings) and answers false for any other string or number - a value of a newer server. <c>Read</c> makes that
+    /// <c>default</c> (the member <c>E</c>), <c>ReadOrNull</c> null (<c>E?</c>), and the converters leave it out of a
+    /// <c>List&lt;E&gt;</c>. Numeric enums keep reading every integer, as before. Other tokens (object, array, bool) still
+    /// fail: they are a broken contract, not a newer one. The helper never asks the options, so a resolver entry built on it
+    /// cannot call back into itself.
+    /// </summary>
+    void AppendTolerantEnumRead(StringBuilder sb, string enumName, bool isStringEnum, string underlyingType, List<(string Member, string Wire)> wireNames)
+    {
+        var typeRef = $"global::{config.Namespace}.{enumName}";
+        const string reader = "ref global::System.Text.Json.Utf8JsonReader reader, global::System.Text.Json.JsonSerializerOptions options";
+
+        sb.AppendLine("    /// <summary>A value this document does not declare reads as <c>default</c>.</summary>");
+        sb.AppendLine($"    public static {typeRef} Read({reader})");
+        sb.AppendLine("        => TryRead(ref reader, options, out var value) ? value : default;");
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>A value this document does not declare reads as <c>null</c>.</summary>");
+        sb.AppendLine($"    public static {typeRef}? ReadOrNull({reader})");
+        sb.AppendLine("        => TryRead(ref reader, options, out var value) ? value : null;");
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>False for a string or number this document does not declare (a newer server): the caller reads it as absent.</summary>");
+        sb.AppendLine($"    public static bool TryRead({reader}, out {typeRef} value)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (reader.TokenType == global::System.Text.Json.JsonTokenType.String)");
+        sb.AppendLine("        {");
+        if (isStringEnum)
+        {
+            foreach (var (member, wire) in wireNames)
+                sb.AppendLine($"            if (reader.ValueTextEquals(\"{Escape(wire)}\")) {{ value = {typeRef}.{member}; return true; }}");
+        }
+        if (config.LenientEnums)
+        {
+            if (isStringEnum)
+            {
+                sb.AppendLine();
+                sb.AppendLine("            // LenientEnums: the wire names and member names in any casing");
+                sb.AppendLine("            var text = reader.GetString();");
+                foreach (var (member, wire) in wireNames)
+                    sb.AppendLine($"            if (string.Equals(text, \"{Escape(wire)}\", global::System.StringComparison.OrdinalIgnoreCase)) {{ value = {typeRef}.{member}; return true; }}");
+                sb.AppendLine($"            if (global::System.Enum.TryParse(typeof({typeRef}), text, true, out var named)) {{ value = ({typeRef})named; return true; }}");
+            }
+            else
+            {
+                sb.AppendLine("            // LenientEnums: a member name in any casing, flag combinations included");
+                sb.AppendLine($"            if (global::System.Enum.TryParse(typeof({typeRef}), reader.GetString(), true, out var named)) {{ value = ({typeRef})named; return true; }}");
+            }
+        }
+        sb.AppendLine("            value = default;");
+        sb.AppendLine("            return false;");
+        sb.AppendLine("        }");
+        sb.AppendLine("        if (reader.TokenType == global::System.Text.Json.JsonTokenType.Number)");
+        sb.AppendLine("        {");
+        if (!isStringEnum || config.LenientEnums)
+        {
+            var tryGet = underlyingType == "long" ? "TryGetInt64" : "TryGetInt32";
+            if (isStringEnum)
+                sb.AppendLine("            // LenientEnums: an integer, as JsonStringEnumConverter reads it");
+            sb.AppendLine($"            if (reader.{tryGet}(out var number)) {{ value = ({typeRef})number; return true; }}");
+        }
+        sb.AppendLine("            value = default;");
+        sb.AppendLine("            return false;");
+        sb.AppendLine("        }");
+        sb.AppendLine($"        throw new global::System.Text.Json.JsonException(\"The JSON value could not be converted to {config.Namespace}.{enumName}.\");");
+        sb.AppendLine("    }");
     }
     
 
@@ -707,7 +786,7 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
                     var typeSymbol = Compilation.GetTypeByMetadataName(fullyQualifiedTypeName);
                     if (typeSymbol != null)
                     {
-                        JsonConverterSourceGenerator.GenerateJsonConverter(context, typeSymbol, this.GetEnumJsonHelper, this.RequireTypeInfo);
+                        JsonConverterSourceGenerator.GenerateJsonConverter(context, typeSymbol, this.GetEnumJsonHelper, this.RequireTypeInfo, config.IgnoreUnknownValues);
                         this.convertedTypes.Add(fullyQualifiedTypeName);
                     }
                 }
@@ -764,7 +843,17 @@ public class OpenApiModelGenerator(MediatorHttpItemConfig config, SourceProducti
         sb.AppendLine("            case null:");
         sb.AppendLine($"                throw new JsonException(\"Missing '{tagName}' discriminator for {className}\");");
         sb.AppendLine("            default:");
-        sb.AppendLine($"                throw new JsonException($\"Unknown '{tagName}' discriminator '{{discriminator}}' for {className}\");");
+        if (config.IgnoreUnknownValues)
+        {
+            // a variant of a newer server reads as null instead of failing the response (a list keeps the null element)
+            sb.AppendLine("                // IgnoreUnknownValues: a variant this document does not declare reads as null");
+            sb.AppendLine("                reader.Skip();");
+            sb.AppendLine("                return null;");
+        }
+        else
+        {
+            sb.AppendLine($"                throw new JsonException($\"Unknown '{tagName}' discriminator '{{discriminator}}' for {className}\");");
+        }
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine();

@@ -34,6 +34,15 @@ public class MediatorHttpItemConfig
     public bool OmitEnumConverterAttributes { get; set; }
 
     /// <summary>
+    /// With <see cref="GenerateJsonConverters"/>: a value the document does not declare reads as if it were not there, instead of
+    /// failing the whole response - an enum string (or, for a string enum without <see cref="LenientEnums"/>, a number) becomes
+    /// <c>default</c> for <c>E</c>, <c>null</c> for <c>E?</c> and is left out of a <c>List&lt;E&gt;</c> member; an unknown
+    /// discriminator of a polymorphic model reads as <c>null</c>. For clients that must keep working against a newer server.
+    /// The enum helpers then never ask the options. Missing discriminators and other tokens still fail; writing is unchanged.
+    /// </summary>
+    public bool IgnoreUnknownValues { get; set; }
+
+    /// <summary>
     /// Path of an operation list (one operationId or component schema name per line, relative to the OpenAPI file): only
     /// these operations, these schemas and the schemas they reach are generated. Null generates the whole document.
     /// </summary>

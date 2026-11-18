@@ -180,10 +180,12 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
     /// <paramref name="enumHelper"/> names for a type (fully qualified, null for no such enum) instead of
     /// the <see cref="System.Text.Json.JsonSerializerOptions"/>. <paramref name="throughOptions"/> gets the
     /// type of every member that is still read and written through the options' JsonTypeInfo, so the
-    /// caller can provide metadata for it.
+    /// caller can provide metadata for it. With <paramref name="ignoreUnknownEnumValues"/> (IgnoreUnknownValues of the
+    /// document) a value the helper does not know reads as absent: <c>null</c> for <c>E?</c>, left out of <c>List&lt;E&gt;</c>
+    /// (<c>E</c> gets <c>default</c> from the helper itself).
     /// </summary>
-    public static void GenerateJsonConverter(SourceProductionContext context, INamedTypeSymbol typeSymbol, Func<string, string?> enumHelper, Action<string> throughOptions)
-        => GenerateJsonConverter(context, typeSymbol, attachAttribute: true, enumHelper, throughOptions);
+    public static void GenerateJsonConverter(SourceProductionContext context, INamedTypeSymbol typeSymbol, Func<string, string?> enumHelper, Action<string> throughOptions, bool ignoreUnknownEnumValues = false)
+        => GenerateJsonConverter(context, typeSymbol, attachAttribute: true, enumHelper, throughOptions, ignoreUnknownEnumValues);
 
 
     /// <summary>
@@ -200,7 +202,7 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         => GenerateJsonConverter(context, typeSymbol, attachAttribute, null, null);
 
 
-    static void GenerateJsonConverter(SourceProductionContext context, INamedTypeSymbol typeSymbol, bool attachAttribute, Func<string, string?>? enumHelper, Action<string>? throughOptions)
+    static void GenerateJsonConverter(SourceProductionContext context, INamedTypeSymbol typeSymbol, bool attachAttribute, Func<string, string?>? enumHelper, Action<string>? throughOptions, bool ignoreUnknownEnumValues = false)
     {
         // Get the syntax node for the type symbol to check if it's partial
         var syntaxReferences = typeSymbol.DeclaringSyntaxReferences;
@@ -264,16 +266,19 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
             return;
         }
 
-        GenerateJsonConverter(context, typeInfo, enumHelper, throughOptions);
+        GenerateJsonConverter(context, typeInfo, enumHelper, throughOptions, ignoreUnknownEnumValues);
         if (attachAttribute)
             GeneratePartialTypeWithAttribute(context, typeInfo);
     }
 
 
-    /// <summary>A member typed as a generated OpenAPI enum: <c>E</c>, <c>E?</c> (<see cref="IsNullable"/>) or <c>List&lt;E&gt;</c> (<see cref="ListElement"/>).</summary>
-    sealed record EnumMember(string Helper, bool IsNullable, string? ListElement);
+    /// <summary>
+    /// A member typed as a generated OpenAPI enum: <c>E</c>, <c>E?</c> (<see cref="IsNullable"/>) or <c>List&lt;E&gt;</c>
+    /// (<see cref="ListElement"/>). <see cref="IgnoreUnknown"/>: the helper has <c>TryRead</c>/<c>ReadOrNull</c> (IgnoreUnknownValues).
+    /// </summary>
+    sealed record EnumMember(string Helper, bool IsNullable, string? ListElement, bool IgnoreUnknown = false);
 
-    static EnumMember? GetEnumMember(PropertyInfo prop, Func<string, string?>? enumHelper)
+    static EnumMember? GetEnumMember(PropertyInfo prop, Func<string, string?>? enumHelper, bool ignoreUnknown)
     {
         if (enumHelper == null)
             return null;
@@ -282,14 +287,14 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         var nullable = prop.TypeName.EndsWith("?", StringComparison.Ordinal);
         var type = nullable ? prop.TypeName.Substring(0, prop.TypeName.Length - 1) : prop.TypeName;
         if (enumHelper(type) is { } helper)
-            return new EnumMember(helper, nullable, null);
+            return new EnumMember(helper, nullable, null, ignoreUnknown);
 
         const string list = "global::System.Collections.Generic.List<";
         if (!nullable && type.StartsWith(list, StringComparison.Ordinal) && type.EndsWith(">", StringComparison.Ordinal))
         {
             var element = type.Substring(list.Length, type.Length - list.Length - 1);
             if (enumHelper(element) is { } elementHelper)
-                return new EnumMember(elementHelper, true, element);
+                return new EnumMember(elementHelper, true, element, ignoreUnknown);
         }
         return null;
     }
@@ -342,7 +347,9 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         sb.AppendLine("                    if (reader.TokenType != JsonTokenType.Null)");
         if (member.ListElement == null)
         {
-            sb.AppendLine($"                        {target} = {member.Helper}.Read(ref reader, options);");
+            // IgnoreUnknownValues: an unknown value of E? reads as null (Read already gives default for E)
+            var read = member.IgnoreUnknown && member.IsNullable ? "ReadOrNull" : "Read";
+            sb.AppendLine($"                        {target} = {member.Helper}.{read}(ref reader, options);");
             return;
         }
 
@@ -351,7 +358,16 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         sb.AppendLine("                            throw new JsonException(\"Expected StartArray token\");");
         sb.AppendLine($"                        var __items = new global::System.Collections.Generic.List<{member.ListElement}>();");
         sb.AppendLine("                        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)");
-        sb.AppendLine($"                            __items.Add({member.Helper}.Read(ref reader, options));");
+        if (member.IgnoreUnknown)
+        {
+            // IgnoreUnknownValues: an unknown element is left out
+            sb.AppendLine($"                            if ({member.Helper}.TryRead(ref reader, options, out var __item))");
+            sb.AppendLine("                                __items.Add(__item);");
+        }
+        else
+        {
+            sb.AppendLine($"                            __items.Add({member.Helper}.Read(ref reader, options));");
+        }
         sb.AppendLine($"                        {target} = __items;");
         sb.AppendLine("                    }");
     }
@@ -423,7 +439,7 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         => GenerateJsonConverter(context, typeInfo, null, null);
 
 
-    static void GenerateJsonConverter(SourceProductionContext context, TypeInfo typeInfo, Func<string, string?>? enumHelper, Action<string>? throughOptions)
+    static void GenerateJsonConverter(SourceProductionContext context, TypeInfo typeInfo, Func<string, string?>? enumHelper, Action<string>? throughOptions, bool ignoreUnknownEnumValues = false)
     {
         var sb = new StringBuilder();
         
@@ -464,7 +480,7 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
         var throughMetadata = false;
         foreach (var prop in typeInfo.Properties)
         {
-            if (GetEnumMember(prop, enumHelper) is { } enumMember)
+            if (GetEnumMember(prop, enumHelper, ignoreUnknownEnumValues) is { } enumMember)
             {
                 AppendEnumMemberWrite(sb, prop, enumMember);
                 continue;
@@ -571,7 +587,7 @@ public class JsonConverterSourceGenerator : IIncrementalGenerator
             }
             
             var targetVariable = isRecord ? ToCamelCase(prop.Name) : $"result.{prop.Name}";
-            if (GetEnumMember(prop, enumHelper) is { } enumMember)
+            if (GetEnumMember(prop, enumHelper, ignoreUnknownEnumValues) is { } enumMember)
             {
                 AppendEnumMemberRead(sb, targetVariable, enumMember);
                 sb.AppendLine("                    break;");

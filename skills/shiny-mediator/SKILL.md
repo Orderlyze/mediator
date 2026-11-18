@@ -28,6 +28,7 @@ triggers:
   - LenientEnums
   - UsedCollectionsOnly
   - OmitEnumConverterAttributes
+  - IgnoreUnknownValues
   - discriminator
   - polymorphism
   - oneOf
@@ -280,7 +281,10 @@ through the options' own metadata for the enum (if any), otherwise a `JsonExcept
 `LenientEnums="true"` the helper reads other spellings itself instead - any member name in any casing
 (flag combinations included) and, for string enums, the wire names in any casing and any integer -
 through the non-generic `Enum.TryParse(Type, …)`, never asking the options (no reflection; use it for
-an API that sends an enum sometimes as name and sometimes as number). The resolver
+an API that sends an enum sometimes as name and sometimes as number). With `IgnoreUnknownValues="true"` the helper
+also gets `TryRead`/`ReadOrNull`: a value the document does not declare reads as `default` for `E`, `null` for
+`E?` and is left out of a `List<E>` member, again without asking the options (use it for a client that must keep
+working when a newer server adds enum values). The resolver
 only registers enums that generated code still asks the options for (a request body, a response, or
 a member shape other than `E`, `E?` and `List<E>`), so AOT/ReadyToRun don't compile
 System.Text.Json's generic converter machinery once per enum. Every other member a converter does
@@ -562,6 +566,7 @@ Generate contracts, models, and handlers directly from OpenAPI/Swagger specs. Ad
 | `LenientEnums` | With `GenerateJsonConverters`: enums also read any member name (any casing) and string enums any integer, without reflection |
 | `UsedCollectionsOnly` | With `GenerateJsonConverters`: the resolver wires `List<T>`/`T[]` of a model only where generated code reaches it (member, body, response) - smaller AOT/ReadyToRun output; other model collections need their own type info |
 | `OmitEnumConverterAttributes` | With `GenerateJsonConverters`: generated enums carry no `[JsonConverter(JsonStringEnumConverter<E>/JsonNumberEnumConverter<E>)]` - the generated converters and resolver don't need it, NativeAOT would keep a converter per enum; reflection or own source-generated contexts then write string enums as numbers |
+| `IgnoreUnknownValues` | With `GenerateJsonConverters`: a value the document does not declare (a newer server) reads as absent instead of failing the response - an enum string becomes `default` for `E`, `null` for `E?` and is left out of a `List<E>` member; an unknown discriminator reads as `null`. Missing discriminators and other token types still throw; writing is unchanged |
 
 **Discriminated (polymorphic) schemas** are always supported: a schema with a `discriminator` (either a
 `oneOf`/`anyOf` union as ASP.NET Core emits it, or `allOf: [$ref Base, {...}]` inheritance as NSwag/Swashbuckle
@@ -569,7 +574,8 @@ emit it) generates an `abstract partial class Base` carrying `[JsonConverter(typ
 `public abstract string Kind`, plus `partial class Variant : Base` with `Kind` overridden to its discriminator value.
 Deserialize to the base type (`List<Animal>`) and pattern-match on the variant (`if (a is Dog d)`). To send one,
 construct the variant (`new Dog { ... }`); do not set the discriminator by hand. Unmapped variants use their schema
-name as the value. `$type` becomes a `Type` property. An unknown or missing discriminator throws `JsonException`.
+name as the value. `$type` becomes a `Type` property. A missing discriminator throws `JsonException`, an unknown one
+too - unless `IgnoreUnknownValues="true"`, where the variant reads as `null` (a list keeps the element as `null`).
 
 **Registration of generated OpenAPI client:**
 ```csharp

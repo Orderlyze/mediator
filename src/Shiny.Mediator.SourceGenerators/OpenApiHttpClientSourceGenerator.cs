@@ -152,6 +152,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             LenientEnums = GetProperty(options, "LenientEnums", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiLenientEnums,
             UsedCollectionsOnly = GetProperty(options, "UsedCollectionsOnly", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiUsedCollectionsOnly,
             OmitEnumConverterAttributes = GetProperty(options, "OmitEnumConverterAttributes", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiOmitEnumConverterAttributes,
+            IgnoreUnknownValues = GetProperty(options, "IgnoreUnknownValues", null)?.Equals("true", StringComparison.InvariantCultureIgnoreCase) ?? Constants.DefaultOpenApiIgnoreUnknownValues,
             Operations = GetProperty(options, "Operations", null)
         };
     }
@@ -376,15 +377,18 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
         {
             var typeRef = $"global::{kv.Key}";
 
-            if (config.LenientEnums)
+            if (config.LenientEnums || config.IgnoreUnknownValues)
             {
                 // LenientEnums: the enum's {Enum}Json helper, so a body or response reads exactly like a member.
                 // The lenient helper never asks the options, so this entry cannot call back into itself.
+                // IgnoreUnknownValues: the same, and an unknown value reads as default (E) or null (E?), as a member does.
                 var helper = $"new HelperEnumConverter<{typeRef}>({typeRef}Json.Read, {typeRef}Json.Write)";
                 sb.AppendLine($"        if (type == typeof({typeRef}))");
                 sb.AppendLine($"            return JsonMetadataServices.CreateValueInfo<{typeRef}>(options, {helper});");
                 sb.AppendLine($"        if (type == typeof({typeRef}?))");
-                sb.AppendLine($"            return JsonMetadataServices.CreateValueInfo<{typeRef}?>(options, new NullableEnumConverter<{typeRef}>({helper}));");
+                sb.AppendLine(config.IgnoreUnknownValues
+                    ? $"            return JsonMetadataServices.CreateValueInfo<{typeRef}?>(options, new HelperNullableEnumConverter<{typeRef}>({typeRef}Json.ReadOrNull, {typeRef}Json.Write));"
+                    : $"            return JsonMetadataServices.CreateValueInfo<{typeRef}?>(options, new NullableEnumConverter<{typeRef}>({helper}));");
             }
             else if (kv.Value)
             {
@@ -562,7 +566,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
             sb.AppendLine("            this.inner.Write(writer, value.Value, options);");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
-            if (config.LenientEnums)
+            if (config.LenientEnums || config.IgnoreUnknownValues)
             {
                 sb.AppendLine();
                 sb.AppendLine("    delegate T EnumReader<T>(ref global::System.Text.Json.Utf8JsonReader reader, JsonSerializerOptions options);");
@@ -583,6 +587,31 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
                 sb.AppendLine();
                 sb.AppendLine("        public override void Write(global::System.Text.Json.Utf8JsonWriter writer, T value, JsonSerializerOptions options)");
                 sb.AppendLine("            => this.write(writer, value);");
+                sb.AppendLine("    }");
+            }
+            if (config.IgnoreUnknownValues)
+            {
+                // E? through the helper's ReadOrNull: an unknown value is null, not default
+                sb.AppendLine();
+                sb.AppendLine("    sealed class HelperNullableEnumConverter<T> : global::System.Text.Json.Serialization.JsonConverter<T?> where T : struct, System.Enum");
+                sb.AppendLine("    {");
+                sb.AppendLine("        readonly EnumReader<T?> read;");
+                sb.AppendLine("        readonly Action<global::System.Text.Json.Utf8JsonWriter, T> write;");
+                sb.AppendLine();
+                sb.AppendLine("        public HelperNullableEnumConverter(EnumReader<T?> read, Action<global::System.Text.Json.Utf8JsonWriter, T> write)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            this.read = read;");
+                sb.AppendLine("            this.write = write;");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+                sb.AppendLine("        public override T? Read(ref global::System.Text.Json.Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)");
+                sb.AppendLine("            => reader.TokenType == global::System.Text.Json.JsonTokenType.Null ? null : this.read(ref reader, options);");
+                sb.AppendLine();
+                sb.AppendLine("        public override void Write(global::System.Text.Json.Utf8JsonWriter writer, T? value, JsonSerializerOptions options)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            if (value is null) { writer.WriteNullValue(); return; }");
+                sb.AppendLine("            this.write(writer, value.Value);");
+                sb.AppendLine("        }");
                 sb.AppendLine("    }");
             }
         }
@@ -997,7 +1026,7 @@ public class OpenApiHttpClientSourceGenerator : IIncrementalGenerator
                 }
                 else
                 {
-                    JsonConverterSourceGenerator.GenerateJsonConverter(context, typeSymbol, modelGenerator.GetEnumJsonHelper, modelGenerator.RequireTypeInfo);
+                    JsonConverterSourceGenerator.GenerateJsonConverter(context, typeSymbol, modelGenerator.GetEnumJsonHelper, modelGenerator.RequireTypeInfo, config.IgnoreUnknownValues);
                     modelGenerator.ConvertedTypeNames.Add(fullyQualifiedTypeName);
                 }
             }

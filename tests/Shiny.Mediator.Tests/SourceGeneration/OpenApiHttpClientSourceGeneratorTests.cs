@@ -106,6 +106,30 @@ public class OpenApiHttpClientSourceGeneratorTests(ITestOutputHelper output)
         var result = RunGenerator(additionalFiles, buildProps);
         return Verify(result).UseParameters(filePath);
     }
+
+    // IgnoreUnknownValues with generated converters (as the POS client uses it): the enum helpers get TryRead/ReadOrNull, the
+    // converters read E? through ReadOrNull and leave unknown List<E> elements out, the discriminated base reads an unknown
+    // variant as null, and the resolver wires E and E? through the helpers.
+    [Fact]
+    public Task IgnoreUnknownValues_Generation()
+    {
+        const string filePath = "./SourceGeneration/unknown-values.json";
+        var additionalFiles = new AdditionalText[] { new MockAdditionalText(filePath, File.ReadAllText(filePath)) };
+
+        var buildProps = new Dictionary<string, string>
+        {
+            ["build_property.RootNamespace"] = "UnitTests",
+            ["build_property.AssemblyName"] = "UnitTests",
+            ["build_metadata.AdditionalFiles.SourceItemGroup"] = "MediatorHttp",
+            ["build_metadata.AdditionalFiles.Namespace"] = "TestApi",
+            ["build_metadata.AdditionalFiles.GenerateJsonConverters"] = "true",
+            ["build_metadata.AdditionalFiles.LenientEnums"] = "true",
+            ["build_metadata.AdditionalFiles.OmitEnumConverterAttributes"] = "true",
+            ["build_metadata.AdditionalFiles.IgnoreUnknownValues"] = "true"
+        };
+
+        return Verify(RunGenerator(additionalFiles, buildProps));
+    }
     
     [Fact]
     public Task Response_With_Json_Schema_Uses_Schema_Type_Not_HttpResponseMessage()

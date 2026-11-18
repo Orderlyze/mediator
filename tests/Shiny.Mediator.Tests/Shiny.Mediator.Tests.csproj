@@ -100,6 +100,28 @@
                       LenientEnums="true"
                       OmitEnumConverterAttributes="true"
                       Visible="false"/>
+        <!--IgnoreUnknownValues: values of a newer server read as absent - as the POS client uses it (lenient, no enum attributes)...-->
+        <MediatorHttp Include="SourceGeneration\unknown-values.json"
+                      Namespace="UnknownValuesApi"
+                      ContractPostfix="HttpRequest"
+                      GenerateJsonConverters="true"
+                      LenientEnums="true"
+                      OmitEnumConverterAttributes="true"
+                      IgnoreUnknownValues="true"
+                      Visible="false"/>
+        <!--...without LenientEnums, and the same document without the option (unknown values still fail)-->
+        <MediatorHttp Include="$(IntermediateOutputPath)unknown-strict\unknown-values.json"
+                      Namespace="UnknownValuesStrictApi"
+                      ContractPostfix="HttpRequest"
+                      GenerateJsonConverters="true"
+                      IgnoreUnknownValues="true"
+                      Visible="false"/>
+        <MediatorHttp Include="$(IntermediateOutputPath)unknown-off\unknown-values.json"
+                      Namespace="UnknownValuesOffApi"
+                      ContractPostfix="HttpRequest"
+                      GenerateJsonConverters="true"
+                      LenientEnums="true"
+                      Visible="false"/>
         <!--UsedCollectionsOnly: List<T>/T[] of a model only where generated code reaches them (a copy wires the default)-->
         <MediatorHttp Include="SourceGeneration\used-collections.json"
                       Namespace="UsedCollectionsApi"
@@ -144,6 +166,12 @@
               SkipUnchangedFiles="true"/>
         <Copy SourceFiles="SourceGeneration\used-collections.json"
               DestinationFolder="$(IntermediateOutputPath)all-collections"
+              SkipUnchangedFiles="true"/>
+        <Copy SourceFiles="SourceGeneration\unknown-values.json"
+              DestinationFolder="$(IntermediateOutputPath)unknown-strict"
+              SkipUnchangedFiles="true"/>
+        <Copy SourceFiles="SourceGeneration\unknown-values.json"
+              DestinationFolder="$(IntermediateOutputPath)unknown-off"
               SkipUnchangedFiles="true"/>
     </Target>
 

@@ -391,6 +391,7 @@ Generate strongly-typed mediator contracts and handlers from OpenAPI specs via `
 | `LenientEnums` | With `GenerateJsonConverters`: enums also read any member name (any casing) and string enums any integer, without reflection | `false` |
 | `UsedCollectionsOnly` | With `GenerateJsonConverters`: the resolver wires `List<T>`/`T[]` of a model only where generated code reaches it (member, body, response) - smaller AOT/ReadyToRun output; other model collections need their own type info | `false` |
 | `OmitEnumConverterAttributes` | With `GenerateJsonConverters`: generated enums carry no `[JsonConverter(JsonStringEnumConverter<E>/JsonNumberEnumConverter<E>)]` - the generated converters and resolver don't need it, NativeAOT would keep a converter per enum; reflection or own source-generated contexts then write string enums as numbers | `false` |
+| `IgnoreUnknownValues` | With `GenerateJsonConverters`: a value the document does not declare (a newer server) reads as absent instead of failing the response - an enum string becomes `default` for `E`, `null` for `E?` and is left out of a `List<E>` member; an unknown discriminator reads as `null`. Missing discriminators and other token types still throw; writing is unchanged | `false` |
 
 ### What Gets Generated
 - **Models** from `components/schemas` with `[JsonPropertyName]` attributes
